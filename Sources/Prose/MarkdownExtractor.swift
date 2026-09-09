@@ -13,9 +13,9 @@ public struct MarkdownExtractor: Extractor {
     }
 }
 
-enum FrontMatter {
+public enum FrontMatter {
     /// Drops a leading YAML block fenced by `---` lines.
-    static func strip(_ text: String) -> String {
+    public static func strip(_ text: String) -> String {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return text }
         guard

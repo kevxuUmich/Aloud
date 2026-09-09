@@ -35,4 +35,41 @@ import Testing
         #expect(DocumentType(url: URL(fileURLWithPath: "/x/a.pdf")) == .pdf)
         #expect(DocumentType(url: URL(fileURLWithPath: "/x/a.png")) == nil)
     }
+
+    func makeEmptyRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func symlinkLoopsDoNotHang() throws {
+        let root = try makeEmptyRoot()
+        let fm = FileManager.default
+        try fm.createDirectory(at: root.appendingPathComponent("a"), withIntermediateDirectories: true)
+        try "# Doc".write(
+            to: root.appendingPathComponent("a/note.md"), atomically: true, encoding: .utf8)
+        try fm.createSymbolicLink(
+            atPath: root.appendingPathComponent("a/loop").path, withDestinationPath: "..")
+        let f = try Scanner.scan(root: root)
+        #expect(f.documentCount == 1)
+    }
+
+    @Test func unreadableSubfolderIsSkippedAndRecorded() throws {
+        let root = try makeEmptyRoot()
+        let fm = FileManager.default
+        try "# Ok".write(to: root.appendingPathComponent("ok.md"), atomically: true, encoding: .utf8)
+        let blocked = root.appendingPathComponent("Blocked")
+        try fm.createDirectory(at: blocked, withIntermediateDirectories: true)
+        try "x".write(to: blocked.appendingPathComponent("x.md"), atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: blocked.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: blocked.path) }
+        guard getuid() != 0 else {
+            // Root ignores POSIX permissions, so the unreadable folder is readable anyway;
+            // nothing to assert under this account.
+            return
+        }
+        let f = try Scanner.scan(root: root)
+        #expect(f.unreadable.map(\.lastPathComponent) == ["Blocked"])
+        #expect(f.documents.map(\.title) == ["Ok"])
+    }
 }

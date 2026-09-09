@@ -18,7 +18,7 @@ let package = Package(
             name: "Prose",
             dependencies: [.product(name: "Markdown", package: "swift-markdown")],
             swiftSettings: strict),
-        .target(name: "Vault", swiftSettings: strict),
+        .target(name: "Vault", dependencies: ["Prose"], swiftSettings: strict),
         .target(name: "Speech", dependencies: ["Prose"], swiftSettings: strict),
         .executableTarget(
             name: "Aloud",

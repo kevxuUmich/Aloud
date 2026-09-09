@@ -26,13 +26,17 @@ public struct Folder: Identifiable, Hashable, Sendable {
     public let name: String
     public let folders: [Folder]
     public let documents: [Document]
+    public let unreadable: [URL]
     public var documentCount: Int {
         documents.count + folders.reduce(0) { $0 + $1.documentCount }
     }
-    public init(url: URL, name: String, folders: [Folder], documents: [Document]) {
+    public init(
+        url: URL, name: String, folders: [Folder], documents: [Document], unreadable: [URL] = []
+    ) {
         self.url = url
         self.name = name
         self.folders = folders
         self.documents = documents
+        self.unreadable = unreadable
     }
 }

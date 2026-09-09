@@ -48,9 +48,11 @@ public final class ProgressStore: @unchecked Sendable {
     }
 
     private func scheduleWrite() {
-        pending?.cancel()
         let item = DispatchWorkItem { [weak self] in self?.flush() }
-        pending = item
+        lock.withLock {
+            pending?.cancel()
+            pending = item
+        }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.debounce, execute: item)
     }
 
