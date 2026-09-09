@@ -46,7 +46,7 @@ struct LibraryGrid: View {
             card
         } else {
             card.contextMenu {
-                Button("Remove from Aloud", role: .destructive) { model.removeRoot(f.url) }
+                Button("Detach Folder", role: .destructive) { model.removeRoot(f.url) }
             }
         }
     }

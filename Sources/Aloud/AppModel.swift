@@ -209,7 +209,7 @@ final class AppModel {
         }
     }
 
-    /// Settings' Remove, and the library's. The bookmark goes, its scoped access with
+    /// Settings' Detach Folder, and the library's. The bookmark goes, its scoped access with
     /// it, and the library is rebuilt from what is left rather than filtered, so a
     /// document under two roots survives losing one of them.
     ///
@@ -220,7 +220,7 @@ final class AppModel {
     /// paused and the document let go rather than left playing out of a folder the app
     /// no longer has permission to open.
     func removeRoot(_ url: URL) {
-        let removed = "\(url.lastPathComponent) removed from Aloud. Its files were not touched."
+        let removed = "\(url.lastPathComponent) detached from Aloud. Its files were not touched."
         // Nothing being read under this root: the order does not matter, so it stays
         // the synchronous one.
         guard let c = current, Paths.isInside(c.url.path, root: url.path) else {
@@ -307,7 +307,7 @@ final class AppModel {
         reloadRoots()
     }
 
-    /// Settings' Remove on a root that will not resolve. The volume is not coming back,
+    /// Settings' Detach Folder on a root that will not resolve. The volume is not coming back,
     /// or the reader has decided it is not: either way the blob goes.
     func removeUnreachable(index: Int) {
         rootStore.remove(unreachableIndex: index)

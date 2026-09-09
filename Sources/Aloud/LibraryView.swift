@@ -119,14 +119,14 @@ struct LibraryView: View {
         }
     }
 
-    /// Dropping the folder that is on screen. Inside a root it is that root; at the top
+    /// Detaching the folder that is on screen. Inside a root it is that root; at the top
     /// level it is the single root whose contents are being shown flattened, which has
     /// no card of its own to right-click. Anywhere else there is no one folder the menu
     /// could mean, and the roots' own cards carry the item instead.
     @ViewBuilder var removeFolderItem: some View {
         if let url = folderURL, model.roots.contains(where: { $0.path == url.path }) {
             Divider()
-            Button("Remove This Folder from Aloud", role: .destructive) {
+            Button("Detach This Folder", role: .destructive) {
                 model.removeRoot(url)
                 // The folder just stopped existing as far as the library is concerned,
                 // so the view showing it cannot stay on the stack.
@@ -134,7 +134,7 @@ struct LibraryView: View {
             }
         } else if isTopLevel, model.tree.count == 1, let only = model.tree.first {
             Divider()
-            Button("Remove \(only.name) from Aloud", role: .destructive) {
+            Button("Detach \(only.name)", role: .destructive) {
                 model.removeRoot(only.url)
             }
         }

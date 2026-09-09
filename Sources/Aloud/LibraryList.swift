@@ -41,7 +41,7 @@ struct LibraryList: View {
             row
         } else {
             row.contextMenu {
-                Button("Remove from Aloud", role: .destructive) { model.removeRoot(f.url) }
+                Button("Detach Folder", role: .destructive) { model.removeRoot(f.url) }
             }
         }
     }

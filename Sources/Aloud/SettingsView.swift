@@ -26,12 +26,12 @@ struct SettingsView: View {
                         Spacer()
                         Button("Use for new notes") { model.setNoteFolder(url) }
                             .disabled(model.noteFolder == url)
-                        Button("Remove", role: .destructive) { model.removeRoot(url) }
+                        Button("Detach Folder", role: .destructive) { model.removeRoot(url) }
                     }
                 }
                 // A root whose bookmark will not resolve is named from its last known
                 // path and offered a new one, rather than being dropped: the folder may
-                // be on a volume that is merely unmounted. Removing it is the reader's
+                // be on a volume that is merely unmounted. Detaching it is the reader's
                 // call, so it is offered too, and identity is the store's index rather
                 // than the path, which a migrated root may share with another.
                 ForEach(model.unreachable) { root in
@@ -41,7 +41,7 @@ struct SettingsView: View {
                             systemImage: "exclamationmark.triangle")
                         Spacer()
                         Button("Locate...") { model.locate(root) }
-                        Button("Remove", role: .destructive) {
+                        Button("Detach Folder", role: .destructive) {
                             model.removeUnreachable(index: root.index)
                         }
                     }
