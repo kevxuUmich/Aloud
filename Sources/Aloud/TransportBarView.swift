@@ -23,33 +23,41 @@ struct TransportBarView: View {
                     onSeek: { player.seek(progress: $0) }
                 )
                 .disabled(!isLoaded)
-                HStack {
-                    Group {
+                // Three columns: the title at the left, the transport at the true
+                // centre, the speed and the voice at the right. The side columns are
+                // both flexible and equal, so the centre stays centred however long the
+                // title is; a single row with spacers put the cluster wherever the two
+                // sides happened to balance.
+                HStack(spacing: Space.m) {
+                    title
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: Space.xl) {
+                        TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                            player.skip(seconds: -Player.skipSeconds)
+                        }
+                        TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
+                        TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                            player.skip(seconds: Player.skipSeconds)
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(!isLoaded)
+                    HStack(spacing: Space.m) {
                         RateButton(
                             label: player.rate.label, all: Rate.allCases.map(\.label),
                             onCycle: { model.setRate(player.rate.next) },
-                            onPick: { model.setRate(Rate.allCases[$0]) })
-                        Spacer()
-                        HStack(spacing: Space.xl) {
-                            TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
-                                player.skip(seconds: -Player.skipSeconds)
+                            onPick: { model.setRate(Rate.allCases[$0]) }
+                        )
+                        .disabled(!isLoaded)
+                        // Outside the disabled set on purpose: a listener may want to
+                        // hear the voices and choose one before opening anything at all.
+                        IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
+                            .help(player.voice?.name ?? "Voice")
+                            .popover(isPresented: $showVoices, arrowEdge: .top) {
+                                VoicePopover(model: model)
                             }
-                            TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                            TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
-                                player.skip(seconds: Player.skipSeconds)
-                            }
-                        }
-                        Spacer()
                     }
-                    .disabled(!isLoaded)
-                    // Outside the disabled group on purpose: a listener may want to hear
-                    // the voices and choose one before opening anything at all.
-                    IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
-                        .help(player.voice?.name ?? "Voice")
-                        .popover(isPresented: $showVoices, arrowEdge: .top) {
-                            VoicePopover(model: model)
-                        }
-                    title
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
