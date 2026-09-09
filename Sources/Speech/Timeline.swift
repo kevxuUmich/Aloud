@@ -28,4 +28,9 @@ public struct Timeline: Sendable {
         guard !starts.isEmpty else { return .zero }
         return starts[min(max(index, 0), starts.count - 1)]
     }
+
+    public static func seconds(_ d: Duration) -> Double {
+        let c = d.components
+        return Double(c.seconds) + Double(c.attoseconds) / 1e18
+    }
 }
