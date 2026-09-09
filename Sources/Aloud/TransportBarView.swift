@@ -6,6 +6,7 @@ struct TransportBarView: View {
     var model: AppModel
     var player: Player { model.player }
     @State private var showVoices = false
+    @State private var showPace = false
 
     /// Nothing loaded: the bar is still there, docked and the width of the window, but
     /// the scrubber and the transport controls are disabled and the title slot says so.
@@ -49,6 +50,16 @@ struct TransportBarView: View {
                             onPick: { model.setRate(Rate.allCases[$0]) }
                         )
                         .disabled(!isLoaded)
+                        // The sliders behind the speed: speed itself and the two pauses.
+                        // Live like the voice button, since a pace can be set before
+                        // anything is loaded and is kept for whatever is.
+                        IconButton("slider.horizontal.3", label: "Speed and pauses") {
+                            showPace.toggle()
+                        }
+                        .help("Speed and pauses")
+                        .popover(isPresented: $showPace, arrowEdge: .top) {
+                            PacePopover(model: model)
+                        }
                         // Outside the disabled set on purpose: a listener may want to
                         // hear the voices and choose one before opening anything at all.
                         IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
