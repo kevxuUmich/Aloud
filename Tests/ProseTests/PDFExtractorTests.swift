@@ -46,6 +46,12 @@ import Testing
         #expect(s.sentences.isEmpty)
     }
 
+    @Test func encryptedPDFIsEmpty() throws {
+        let pdf = TestPDF.makeEncrypted(pages: [["first sentence."]])
+        let s = try PDFExtractor().script(from: pdf, options: .default)
+        #expect(s.sentences.isEmpty)
+    }
+
     @Test func garbageIsUndecodable() {
         #expect(throws: ExtractError.self) {
             try PDFExtractor().script(from: Data([1, 2, 3]), options: .default)
