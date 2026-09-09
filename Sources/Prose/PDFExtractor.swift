@@ -34,9 +34,12 @@ enum PDFCleanup {
             .joined(separator: "\n\n")
     }
 
-    /// A non-empty line that appears on more than half the pages is a running header or footer.
+    /// A non-empty line that appears on more than half the pages is a running header or
+    /// footer. Three pages is the fewest that can say that: on two, "more than half" is
+    /// "on both", and a line a two-page document happens to repeat - a title, a heading
+    /// carried over, a name - is prose being read twice, not furniture.
     static func repeatedLines(_ pages: [[String]]) -> Set<String> {
-        guard pages.count > 1 else { return [] }
+        guard pages.count > 2 else { return [] }
         var counts: [String: Int] = [:]
         for lines in pages {
             for line in Set(lines) where !line.isEmpty { counts[line, default: 0] += 1 }

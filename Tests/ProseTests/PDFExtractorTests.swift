@@ -23,6 +23,15 @@ import Testing
         #expect(out.contains("body one."))
     }
 
+    /// Two pages are too few to tell a running header from a line the prose repeats,
+    /// so nothing is dropped from one; three is where the rule starts.
+    @Test func keepsALineSharedByATwoPageDocument() {
+        let out = PDFCleanup.clean(pages: [
+            "Chapter One\nbody one.", "Chapter One\nbody two.",
+        ])
+        #expect(out.contains("Chapter One"))
+    }
+
     @Test func keepsALineRepeatedOnHalfOrFewerPages() {
         let out = PDFCleanup.clean(pages: ["Intro\nbody.", "Intro\nbody.", "other\nbody.", "other\nbody."])
         #expect(out.contains("Intro"))
