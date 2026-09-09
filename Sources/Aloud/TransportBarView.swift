@@ -21,9 +21,13 @@ struct TransportBarView: View {
                     onPick: { model.setRate(Rate.allCases[$0]) })
                 Spacer()
                 HStack(spacing: Space.xl) {
-                    TransportButton(.back15) { player.skip(seconds: -Player.skipSeconds) }
+                    TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                        player.skip(seconds: -Player.skipSeconds)
+                    }
                     TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                    TransportButton(.forward15) { player.skip(seconds: Player.skipSeconds) }
+                    TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                        player.skip(seconds: Player.skipSeconds)
+                    }
                 }
                 Spacer()
                 IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }

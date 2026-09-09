@@ -139,6 +139,12 @@ final class AppModel {
 
     var extractOptions: ExtractOptions { ExtractOptions(skipCode: Defaults.skipCode) }
 
+    /// The sentence being read, for a surface that shows it without the script:
+    /// nil between a load and its first sentence, and whenever nothing is loaded.
+    var currentSentenceText: String? {
+        player.script.sentences[safe: player.sentenceIndex]?.text
+    }
+
     /// The folder the library is looking at, which is where a drop or an import lands.
     var currentFolderURL: URL? {
         if case .folder(let url)? = path.last { return url }

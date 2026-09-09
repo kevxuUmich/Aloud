@@ -36,6 +36,8 @@ public enum Size {
     /// tall enough for a section header and about eight voices under it.
     public static let popoverWidth: CGFloat = 320
     public static let popoverHeight: CGFloat = 440
+    /// The menu-bar panel: the popover's width, so the two read as one control.
+    public static let panelWidth: CGFloat = 320
 }
 
 public enum Ink {
@@ -65,6 +67,8 @@ public enum Type {
     /// status off the bottom of the cell.
     public static let cardTitleLines = 2
     public static let readerLineHeightMultiple: CGFloat = 1.45
+    /// The menu-bar panel's sentence, truncated so the panel keeps its height.
+    public static let panelSentenceLines = 3
 }
 
 public enum Motion {
@@ -74,4 +78,7 @@ public enum Motion {
     public static let quick = Animation.easeOut(duration: fast)
     /// How long the search field waits after the last keystroke before it reads files.
     public static let searchDebounceMS: Double = 200
+    /// A control that is present but has nothing to act on: the menu-bar glyph with
+    /// no document loaded.
+    public static let dimmed: Double = 0.5
 }

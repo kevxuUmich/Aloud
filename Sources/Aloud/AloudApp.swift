@@ -17,6 +17,10 @@ struct AloudApp: App {
     @MainActor static var sayPlayer: Player?
     /// The skip interval as the menu says it, so the titles cannot drift from the step.
     static let skipStep = Int(Player.skipSeconds)
+    /// The one window's id, which is also what the menu bar's Open Aloud reopens.
+    static let mainWindowID = "main"
+
+    @AppStorage("showMenuBar") private var showMenuBar = true
 
     @State private var model: AppModel
 
@@ -30,7 +34,7 @@ struct AloudApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Aloud") {
+        Window("Aloud", id: Self.mainWindowID) {
             if Self.showGallery { Gallery() } else { RootView(model: model) }
         }
         .defaultSize(Size.minWindow)
@@ -62,6 +66,17 @@ struct AloudApp: App {
                     .keyboardShortcut("]", modifiers: .command)
             }
         }
+
+        // The same model, so the bar is the window's player rather than a second one.
+        MenuBarExtra(isInserted: $showMenuBar) {
+            MenuBarPanel(model: model)
+        } label: {
+            Image(systemName: "waveform")
+                .symbolEffect(.variableColor.iterative, isActive: model.player.isPlaying)
+                .opacity(model.current == nil ? Motion.dimmed : 1)
+                .accessibilityLabel("Aloud")
+        }
+        .menuBarExtraStyle(.window)
     }
 
     @MainActor static func say(_ file: URL) async throws {
