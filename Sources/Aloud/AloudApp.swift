@@ -16,13 +16,20 @@ struct AloudApp: App {
 
     @MainActor static var sayPlayer: Player?
 
+    @State private var model: AppModel
+
     init() {
         if let file = Self.sayFile { Task { @MainActor in try? await Self.say(file) } }
+        _model = State(
+            initialValue: MainActor.assumeIsolated {
+                AppModel(
+                    provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
+            })
     }
 
     var body: some Scene {
         WindowGroup("Aloud") {
-            if Self.showGallery { Gallery() } else { Text("Aloud") }
+            if Self.showGallery { Gallery() } else { RootView(model: model) }
         }
         .defaultSize(Size.minWindow)
     }
