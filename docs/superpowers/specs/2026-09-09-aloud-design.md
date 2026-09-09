@@ -42,7 +42,7 @@ The folders the user pointed at, and what is in them.
 - Stores each root as a security-scoped bookmark in the app's own storage, resolves them on launch, and drops any that no longer resolve with a visible notice rather than silently.
 - Walks each root for `.md`, `.txt` and `.pdf`, ignoring dot-files and dot-folders, and exposes a tree of `Folder` and `Document` values.
 - A `Document` carries its URL, title, modified date, size and type.
-- Watches every root with `DispatchSource` file-system events, debounced at 300 ms, and republishes the tree on change.
+- Watches every root recursively with FSEvents at 300 ms latency, since `DispatchSource` watches one directory and not its children, and republishes the tree on change.
 - Writes new notes: `makeNote(text:in:)` writes `<first line, sanitised, max 60 chars>.md` into the chosen folder, appending ` 2`, ` 3` on collision.
 - Writes edits: `save(text:to:)` for `.md` and `.txt` only, atomic write, and refuses PDF.
 - Knows nothing about speech or progress.
