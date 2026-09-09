@@ -105,6 +105,18 @@ final class AppModel {
         progress.set(Progress(sentenceIndex: index, finished: finished, lastPlayed: .now), for: c.url)
     }
 
+    func folder(at url: URL) -> Folder? {
+        Self.find(url: url, in: tree)
+    }
+
+    private static func find(url: URL, in folders: [Folder]) -> Folder? {
+        for f in folders {
+            if f.url == url { return f }
+            if let found = find(url: url, in: f.folders) { return found }
+        }
+        return nil
+    }
+
     private func unreadableNames(in folders: [Folder]) -> [String] {
         folders.flatMap { f -> [String] in
             f.unreadable.map { $0.lastPathComponent } + unreadableNames(in: f.folders)

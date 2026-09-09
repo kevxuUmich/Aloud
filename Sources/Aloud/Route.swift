@@ -1,6 +1,7 @@
+import Foundation
 import Vault
 
 enum Route: Hashable {
-    case folder(Folder)
+    case folder(URL)
     case reader(Document)
 }

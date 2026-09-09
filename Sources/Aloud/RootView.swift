@@ -7,10 +7,10 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack(path: $model.path) {
-            LibraryView(model: model, folder: nil)
+            LibraryView(model: model, folderURL: nil)
                 .navigationDestination(for: Route.self) { route in
                     switch route {
-                    case .folder(let f): LibraryView(model: model, folder: f)
+                    case .folder(let url): LibraryView(model: model, folderURL: url)
                     case .reader(let d): ReaderView(model: model, document: d)
                     }
                 }
