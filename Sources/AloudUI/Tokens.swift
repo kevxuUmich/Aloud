@@ -25,6 +25,8 @@ public enum Size {
     public static let thumb = CGSize(width: 120, height: 150)
     public static let minWindow = CGSize(width: 720, height: 480)
     public static let readerMeasure: CGFloat = 680
+    /// The measure plus the text container's inset on each side.
+    public static let readerFrame: CGFloat = readerMeasure + Space.xxl + Space.xxl
     /// Where an auto-scrolled sentence lands: one third down the visible text.
     public static let readerFollowFraction: CGFloat = 1.0 / 3.0
     public static let scrubberTrack: CGFloat = 4

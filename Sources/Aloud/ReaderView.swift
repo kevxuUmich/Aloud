@@ -14,20 +14,23 @@ struct ReaderView: View {
 
     var player: Player { model.player }
     var isCurrent: Bool { model.current?.id == document.id }
+    /// `@AppStorage` hands back whatever is in defaults, including a value written by a
+    /// build with a different number of sizes, so the index is clamped in one place.
+    var stepIndex: Int { min(max(sizeIndex, 0), Type.readerSizes.count - 1) }
 
     var body: some View {
         HStack {
             Spacer(minLength: .zero)
             ReaderTextView(
                 text: editing ? draft : player.script.source,
-                fontSize: Type.readerSizes[min(max(sizeIndex, 0), Type.readerSizes.count - 1)],
+                fontSize: Type.readerSizes[stepIndex],
                 sentence: isCurrent
                     ? nsRange(player.script.sentences[safe: player.sentenceIndex]?.range) : nil,
                 word: isCurrent ? nsRange(player.wordRange) : nil,
                 follow: follow && player.isPlaying,
                 editable: editing,
                 onClick: { offset in
-                    guard let i = sentenceIndex(at: offset) else { return }
+                    guard let i = player.script.sentenceIndex(atUTF16Offset: offset) else { return }
                     follow = true
                     player.seek(to: i)
                     if !player.isPlaying { player.play() }
@@ -35,17 +38,17 @@ struct ReaderView: View {
                 onEdit: { draft = $0 },
                 onUserScroll: { follow = false }
             )
-            .frame(maxWidth: Size.readerMeasure + Space.xxl * 2)
+            .frame(maxWidth: Size.readerFrame)
             Spacer(minLength: .zero)
         }
         .navigationTitle(document.title)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 IconButton("textformat.size.smaller", label: "Smaller text") {
-                    sizeIndex = max(0, sizeIndex - 1)
+                    sizeIndex = max(0, stepIndex - 1)
                 }
                 IconButton("textformat.size.larger", label: "Larger text") {
-                    sizeIndex = min(Type.readerSizes.count - 1, sizeIndex + 1)
+                    sizeIndex = min(Type.readerSizes.count - 1, stepIndex + 1)
                 }
                 // Editing writes the prose back, which for Markdown would lose the
                 // formatting; raw-source editing lands in plan 2.
@@ -57,6 +60,12 @@ struct ReaderView: View {
             }
         }
         .onChange(of: player.isPlaying) { _, playing in if playing { follow = true } }
+        // Escape goes back to the library. While editing it does nothing, so it can
+        // never be the gesture that silently discards a draft.
+        .onExitCommand {
+            guard !editing, !model.path.isEmpty else { return }
+            model.path.removeLast()
+        }
     }
 
     func nsRange(_ r: Range<String.Index>?) -> NSRange? {
@@ -64,19 +73,11 @@ struct ReaderView: View {
         return NSRange(r, in: player.script.source)
     }
 
-    /// Maps a text view character offset (UTF-16) to the sentence containing it.
-    func sentenceIndex(at offset: Int) -> Int? {
-        let src = player.script.source
-        guard offset >= 0, offset < src.utf16.count,
-            let idx = Range(NSRange(location: offset, length: 0), in: src)?.lowerBound
-        else { return nil }
-        return player.script.sentences.lastIndex { $0.range.lowerBound <= idx }
-    }
-
     func toggleEdit() {
         if editing {
-            editing = false
-            model.saveEdit(draft, to: document)
+            // The button stays in its editing state until the write lands; a failed
+            // save leaves the draft on screen with the notice over it.
+            Task { if await model.saveEdit(draft, to: document) { editing = false } }
         } else {
             player.pause()
             draft = player.script.source

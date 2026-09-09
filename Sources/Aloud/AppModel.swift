@@ -96,15 +96,18 @@ final class AppModel {
             for: doc.url)
     }
 
-    func saveEdit(_ text: String, to doc: Document) {
-        Task {
-            do {
-                try await vault.save(text: text, to: doc)
-                await extraction.invalidate(doc.url)
-                open(doc)
-            } catch {
-                notice = "Could not save \(doc.title): \(error.localizedDescription)"
-            }
+    /// True when the write landed. The caller keeps the reader in its editing state
+    /// until it does, so a failed save never drops the draft.
+    @discardableResult
+    func saveEdit(_ text: String, to doc: Document) async -> Bool {
+        do {
+            try await vault.save(text: text, to: doc)
+            await extraction.invalidate(doc.url)
+            open(doc)
+            return true
+        } catch {
+            notice = "Could not save \(doc.title): \(error.localizedDescription)"
+            return false
         }
     }
 
