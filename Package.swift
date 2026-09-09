@@ -15,6 +15,9 @@ let package = Package(
         // `#Preview` in its Recorder, and the `PreviewsMacros` plugin that expands one
         // ships with Xcode, not with the Command Line Tools this builds against. 1.15.0
         // is the newest tag that compiles here, and it has the whole API Aloud uses.
+        // `project.yml` pins the same version for the Xcode target, which compiles
+        // `Sources/Aloud` itself rather than reaching it as a product of this package;
+        // the two pins are one decision and move together.
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", exact: "1.15.0"),
     ],
     targets: [
