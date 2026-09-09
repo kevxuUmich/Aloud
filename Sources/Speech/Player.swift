@@ -53,6 +53,7 @@ public final class Player {
             sentenceIndex = 0
             finished = false
         }
+        if !isPlaying { onSentence?(sentenceIndex) }
         isPlaying = true
         speakCurrent()
     }
