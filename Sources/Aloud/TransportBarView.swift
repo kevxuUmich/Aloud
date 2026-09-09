@@ -67,11 +67,13 @@ struct TransportBarView: View {
     /// already on screen above the bar, so the slot shows nothing there - but it still
     /// has to be a view that takes the column's width. An `EmptyView` is laid out as
     /// nothing at all, the frame around it collapses with it, and the transport then
-    /// sat at the left of the reader's bar instead of at its centre.
+    /// sat at the left of the reader's bar instead of at its centre. A `Spacer` and
+    /// not a `Color.clear`: in the row a spacer stretches only sideways, where a
+    /// colour stretches both ways and grew the bar to the window's height.
     @ViewBuilder var title: some View {
         if let c = model.current {
             if case .reader? = model.path.last {
-                Color.clear
+                Spacer()
             } else {
                 Button(c.title) { model.open(c) }
                     .font(Type.caption).buttonStyle(.plain).lineLimit(Type.singleLine)
