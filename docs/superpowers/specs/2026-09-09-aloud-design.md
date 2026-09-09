@@ -62,7 +62,7 @@ Headings become their own sentences, list markers are dropped, link text is kept
 - `PDFExtractor`: `PDFPage.string` page by page, then a cleanup pass that joins a line ending in a hyphen with the next, drops any line that appears on more than half the pages (running headers and footers), drops bare page numbers, and collapses single line breaks inside a paragraph.
 If PDFKit's reading order proves poor on real documents, `pdf_oxide` (Rust, MIT/Apache, Swift bindings, sub-millisecond per document) is the named replacement behind the same `Extractor` protocol; it is not taken now because it means shipping a prebuilt binary.
 - Extraction runs off the main actor and its result is cached per file, keyed by path and modification date, so reopening a document is instant and the library's thumbnails and estimates are computed once.
-- Sentence splitting uses `NLTokenizer(unit: .sentence)` everywhere, so the three extractors agree on what a sentence is.
+- Sentence splitting is `SentenceSplitter`'s rule everywhere, terminal punctuation followed by whitespace with an abbreviation guard, so the three extractors agree on what a sentence is; `NLTokenizer` was tried first and does not split before a lowercase sentence start, which is how most pasted text reads.
 - `estimate(_ script: Script, rate: Float) -> Duration` uses 160 words per minute at rate 1.0, scaled linearly, and is what every "~8 min" label reads.
 - Pure functions, no I/O, the most thoroughly tested target.
 
@@ -117,6 +117,7 @@ A grid of the current folder.
 
 - Folders first, then documents by modified date, newest first.
 - A document card is a small monospaced render of the file's first lines, the title, and one status line: `~8 min` before it is started, `3:12 left` once started, `Finished` when done.
+- The pre-start estimate reads the file's byte count at one word per six bytes of file size, since only the first 600 bytes are read at scan time.
 - Title is the first Markdown heading if any, else the first non-empty line, truncated to two lines in the card.
 - A folder card shows its name and its document count.
 - Toolbar: back when inside a folder, search field filtering by title and body, a `+` menu with New note from clipboard, Import files, Add vault folder, and a grid/list toggle.
@@ -134,6 +135,7 @@ Pushed from the library, title in the toolbar.
 - Click on a sentence seeks to it and, if paused, starts playing.
 - Auto-scroll keeps the spoken sentence in the upper third; a manual scroll disables following until play is pressed or a sentence is clicked.
 - Edit button turns the body into a plain text editor for `.md` and `.txt`, saved atomically on blur or Cmd+S, and playback stops while editing; PDFs show Edit disabled with a tooltip.
+- Editing a Markdown file edits its raw source, not the extracted prose; v1's first plan restricts Edit to plain text until the raw-source editor lands.
 - Mark finished toggles the progress flag and is what the library's `Finished` reads.
 - Escape or the back button returns to the library without stopping playback.
 
@@ -219,6 +221,7 @@ This is the `npm run dev`.
 - `make gallery` is `make dev` with `--gallery`, opening the component page instead of the library, for design work in isolation.
 - `make test` is `swift test`; `make check` is `swift format lint` plus `swift build`; both are what a commit is gated on.
 - Everything above works with the command-line tools alone, which is what is installed today.
+- On a machine with only the command-line tools, `make test` passes the framework search path for `Testing.framework` explicitly; Xcode removes the need.
 - Xcode 26 is needed for signing, the asset catalog, SwiftUI previews and shipping the `.app`; `project.yml` is checked in and `xcodegen` produces the project when it is installed.
 Hot reload inside a running app (InjectionNext) is an Xcode-era addition and not part of v1.
 - Sandboxed, with the user-selected-file read-write entitlement and bookmark entitlements.
