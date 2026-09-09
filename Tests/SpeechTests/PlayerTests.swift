@@ -133,4 +133,20 @@ import Testing
         #expect(fake.spoken.last?.voice?.id == "fake")
         #expect(p.voice?.id == "fake")
     }
+    /// A preview is a deliberate interruption: it pauses where it is rather than
+    /// letting the preview's own finish advance the player past the sentence it cut.
+    @Test func previewWhilePlayingPausesAtTheCurrentSentence() {
+        let (p, fake) = make()
+        p.play()
+        fake.finishCurrent()
+        #expect(p.sentenceIndex == 1)
+        let v = Voice(id: "other", name: "Other", language: "en-US", quality: .standard)
+        p.preview(v)
+        #expect(!p.isPlaying)
+        #expect(fake.stops == 1)
+        #expect(fake.previewed == [v])
+        #expect(p.sentenceIndex == 1)
+        p.play()
+        #expect(fake.spoken.last?.text == "Four five six.")
+    }
 }

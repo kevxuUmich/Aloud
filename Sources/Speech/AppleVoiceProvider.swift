@@ -4,19 +4,31 @@ import Foundation
 @MainActor
 public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesizerDelegate {
     private let synth = AVSpeechSynthesizer()
+    /// `voices` is read on every popover render and was read on every sentence, and
+    /// `speechVoices()` is not cheap. The cache is nonisolated because the protocol
+    /// requirement is, so it carries its own lock.
+    private let cache = VoiceCache()
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
 
     public override init() {
         super.init()
         synth.delegate = self
+        // Installing or removing a voice in System Settings is the one thing that can
+        // change the set while the app is open.
+        NotificationCenter.default.addObserver(
+            forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil,
+            queue: nil
+        ) { [cache] _ in cache.invalidate() }
     }
 
     public nonisolated var voices: [Voice] {
-        AVSpeechSynthesisVoice.speechVoices().map {
-            Voice(
-                id: $0.identifier, name: $0.name, language: $0.language,
-                quality: Quality(apple: $0.quality))
+        cache.voices {
+            AVSpeechSynthesisVoice.speechVoices().map {
+                Voice(
+                    id: $0.identifier, name: $0.name, language: $0.language,
+                    quality: Quality(apple: $0.quality))
+            }
         }
     }
 
@@ -43,6 +55,11 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     /// `onWord` and `onFinish` alone: the utterance it cancelled belongs to a `Player`,
     /// which will speak the sentence again when it is next asked to.
     public func preview(_ voice: Voice) {
+        // Dropped before the cancel, not after: the delegate's didCancel arrives on
+        // another turn, and a callback still installed when it does belongs to an
+        // utterance that is no longer being spoken.
+        onWord = nil
+        onFinish = nil
         synth.stopSpeaking(at: .immediate)
         let u = AVSpeechUtterance(string: VoicePreview.text)
         u.rate = Rate.x1.appleRate
@@ -63,6 +80,15 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     }
 
     public nonisolated func speechSynthesizer(
+        _ s: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor in
+            self.onFinish = nil
+            self.onWord = nil
+        }
+    }
+
+    public nonisolated func speechSynthesizer(
         _ s: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance
     ) {
         Task { @MainActor in
@@ -71,6 +97,30 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
             self.onWord = nil
             f?()
         }
+    }
+}
+
+/// The installed set behind a lock, so `voices` can stay nonisolated.
+private final class VoiceCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cached: [Voice]?
+    func voices(_ read: () -> [Voice]) -> [Voice] {
+        lock.lock()
+        if let cached {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        let fresh = read()
+        lock.lock()
+        cached = fresh
+        lock.unlock()
+        return fresh
+    }
+    func invalidate() {
+        lock.lock()
+        cached = nil
+        lock.unlock()
     }
 }
 

@@ -20,4 +20,10 @@ import Testing
             Voice(id: "x", name: "x", language: "en-GB", quality: .standard).regionName
                 == "United Kingdom")
     }
+    /// "001" is the world region, which the locale does name; a bare language tag has
+    /// no region at all and must not invent one.
+    @Test func regionNameForWorld() {
+        #expect(Voice(id: "x", name: "x", language: "ar-001", quality: .standard).regionName != nil)
+        #expect(Voice(id: "y", name: "y", language: "en", quality: .standard).regionName == nil)
+    }
 }

@@ -9,10 +9,15 @@ import SwiftUI
 struct VoicePopover: View {
     var model: AppModel
 
+    /// Grouping the whole installed set is not work for every render, and the set can
+    /// only change while the popover is shut, so it is done once as it opens.
+    @State private var groups: [VoiceGroup] = []
+
     /// `Locale.current.identifier` is underscored ("en_US"), and the grouping splits a
     /// BCP-47 tag on its dash, so the tag has to be asked for in that spelling.
-    var groups: [VoiceGroup] {
-        VoiceGroups.group(model.provider.voices, currentLanguage: Locale.current.identifier(.bcp47))
+    private func load() {
+        groups = VoiceGroups.group(
+            model.provider.voices, currentLanguage: Locale.current.identifier(.bcp47))
     }
 
     var body: some View {
@@ -26,7 +31,7 @@ struct VoicePopover: View {
                                 VoiceRow(
                                     name: v.name, region: v.regionName, quality: v.quality.label,
                                     isSelected: v.id == model.player.voice?.id,
-                                    onPreview: { model.provider.preview(v) },
+                                    onPreview: { model.player.preview(v) },
                                     onPick: { model.pickVoice(v) })
                             }
                         } header: {
@@ -45,6 +50,7 @@ struct VoicePopover: View {
         }
         .padding(Space.xl)
         .frame(width: Size.popoverWidth, height: Size.popoverHeight)
+        .onAppear(perform: load)
     }
 
     static let spokenContentSettings = URL(

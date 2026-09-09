@@ -14,7 +14,9 @@ public final class Player {
     public private(set) var timeline: Timeline
 
     public var rate: Rate = .x1 { didSet { timeline = Timeline(script: script, rate: rate) } }
-    public var voice: Voice?
+    /// Assignment is where availability is settled, so a sentence never pays for the
+    /// check and a voice that has gone is reported once rather than once a sentence.
+    public var voice: Voice? { didSet { ensureVoiceIsInstalled() } }
 
     public var onSentence: ((Int) -> Void)?
     public var onFinished: (() -> Void)?
@@ -62,6 +64,9 @@ public final class Player {
             sentenceIndex = 0
             finished = false
         }
+        // The set can change while the app is open, so the voice is checked again here
+        // as well as at assignment; between them, `speakCurrent` needs no check at all.
+        ensureVoiceIsInstalled()
         onSentence?(sentenceIndex)
         isPlaying = true
         speakCurrent()
@@ -73,6 +78,23 @@ public final class Player {
     }
 
     public func toggle() { isPlaying ? pause() : play() }
+
+    /// Auditions a voice. It goes through the player rather than straight to the
+    /// provider so the interrupted utterance's callbacks are torn down first;
+    /// otherwise the preview's own finish would run `advance()` and skip the sentence
+    /// it cut. The sentence stays current, so `play()` speaks it again. Resuming is
+    /// the reader's move: a preview is a deliberate interruption.
+    public func preview(_ voice: Voice) {
+        stopSpeaking()
+        isPlaying = false
+        provider.preview(voice)
+    }
+
+    private func ensureVoiceIsInstalled() {
+        guard let v = voice, !provider.voices.contains(where: { $0.id == v.id }) else { return }
+        voice = provider.defaultVoice
+        onVoiceUnavailable?(v)
+    }
 
     public func seek(to index: Int) {
         let wasPlaying = isPlaying
@@ -98,10 +120,6 @@ public final class Player {
         generation += 1
         let gen = generation
         let sentence = script.sentences[sentenceIndex]
-        if let v = voice, !provider.voices.contains(where: { $0.id == v.id }) {
-            voice = provider.defaultVoice
-            onVoiceUnavailable?(v)
-        }
         provider.speak(
             sentence.text, voice: voice, rate: rate,
             onWord: { [weak self] ns in
