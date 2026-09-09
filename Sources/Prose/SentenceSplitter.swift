@@ -67,6 +67,11 @@ public enum SentenceSplitter {
         while lo > paragraph.lowerBound, !source[source.index(before: lo)].isWhitespace {
             lo = source.index(before: lo)
         }
+        // Leading punctuation, like the open paren in "(e.g." or the quote in
+        // "\"dr.", is not part of the word to match against the set.
+        while lo < i, !source[lo].isLetter {
+            lo = source.index(after: lo)
+        }
         let word = source[lo..<i]
         if word.count == 1, word.first?.isLetter == true { return true }
         let lowered = word.lowercased()
