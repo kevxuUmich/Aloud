@@ -54,15 +54,15 @@ Turns a file into spoken text.
 - `Extractor` is a protocol with one requirement, `func script(from data: Data, type: DocumentType) throws -> Script`.
 - `Script` is an array of `Sentence`, each with its text and its range back in the displayed source, plus the displayed source string itself.
 - Parsing is not written here.
-Markdown is parsed by Apple's `swift-markdown` (cmark-gfm underneath, Apache-2.0), PDF text comes from the system's PDFKit, and sentences come from the system's `NLTokenizer`.
+Markdown is parsed by Apple's `swift-markdown` (cmark-gfm underneath, Apache-2.0), PDF text comes from the system's PDFKit, and sentences come from `SentenceSplitter`.
 What this target owns is only the rules that turn a parse into speech, each a short function over someone else's output.
 - `MarkdownExtractor`: a `MarkupWalker` over the `swift-markdown` tree.
 Headings become their own sentences, list markers are dropped, link text is kept and the URL dropped, emphasis is dropped, images are dropped, tables are read row by row with cells separated by commas, code blocks are replaced by the single sentence "Code block." when the skip setting is on and read verbatim when it is off, front matter between `---` fences is dropped.
-- `PlainTextExtractor`: paragraphs split on blank lines, sentences split by `NLTokenizer`.
+- `PlainTextExtractor`: paragraphs split on blank lines, sentences split by `SentenceSplitter`.
 - `PDFExtractor`: `PDFPage.string` page by page, then a cleanup pass that joins a line ending in a hyphen with the next, drops any line that appears on more than half the pages (running headers and footers), drops bare page numbers, and collapses single line breaks inside a paragraph.
 If PDFKit's reading order proves poor on real documents, `pdf_oxide` (Rust, MIT/Apache, Swift bindings, sub-millisecond per document) is the named replacement behind the same `Extractor` protocol; it is not taken now because it means shipping a prebuilt binary.
 - Extraction runs off the main actor and its result is cached per file, keyed by path and modification date, so reopening a document is instant and the library's thumbnails and estimates are computed once.
-- Sentence splitting uses `NLTokenizer(unit: .sentence)` everywhere, so the three extractors agree on what a sentence is.
+- Sentence splitting is `SentenceSplitter`'s rule everywhere, terminal punctuation followed by whitespace with an abbreviation guard, so the three extractors agree on what a sentence is; `NLTokenizer` was tried first and does not split before a lowercase sentence start, which is how most pasted text reads.
 - `estimate(_ script: Script, rate: Float) -> Duration` uses 160 words per minute at rate 1.0, scaled linearly, and is what every "~8 min" label reads.
 - Pure functions, no I/O, the most thoroughly tested target.
 
@@ -117,6 +117,7 @@ A grid of the current folder.
 
 - Folders first, then documents by modified date, newest first.
 - A document card is a small monospaced render of the file's first lines, the title, and one status line: `~8 min` before it is started, `3:12 left` once started, `Finished` when done.
+- The pre-start estimate reads the file's byte count at one word per six bytes of file size, since only the first 600 bytes are read at scan time.
 - Title is the first Markdown heading if any, else the first non-empty line, truncated to two lines in the card.
 - A folder card shows its name and its document count.
 - Toolbar: back when inside a folder, search field filtering by title and body, a `+` menu with New note from clipboard, Import files, Add vault folder, and a grid/list toggle.
@@ -134,6 +135,7 @@ Pushed from the library, title in the toolbar.
 - Click on a sentence seeks to it and, if paused, starts playing.
 - Auto-scroll keeps the spoken sentence in the upper third; a manual scroll disables following until play is pressed or a sentence is clicked.
 - Edit button turns the body into a plain text editor for `.md` and `.txt`, saved atomically on blur or Cmd+S, and playback stops while editing; PDFs show Edit disabled with a tooltip.
+- Editing a Markdown file edits its raw source, not the extracted prose; v1's first plan restricts Edit to plain text until the raw-source editor lands.
 - Mark finished toggles the progress flag and is what the library's `Finished` reads.
 - Escape or the back button returns to the library without stopping playback.
 
@@ -200,7 +202,7 @@ Chosen for being local, fast and small; each one is a thing not worth writing.
 |---|---|---|
 | Markdown parsing | `swift-markdown` (Apple, Apache-2.0) | cmark-gfm in C underneath, spec-complete, a visitor API that makes the speech walker about eighty lines |
 | PDF text | PDFKit (system) | zero dependency; `pdf_oxide` is the named fallback |
-| Sentence splitting | `NaturalLanguage` (system) | language-aware, free |
+| Sentence splitting | `Prose.SentenceSplitter` (ours) | punctuation rule with an abbreviation guard; `NLTokenizer` does not split before a lowercase start |
 | Speech | `AVSpeechSynthesizer` (system) | instant, offline, word timing for free |
 | Global hotkey | `KeyboardShortcuts` (sindresorhus, MIT) | Carbon hotkeys without the Carbon, plus the recorder UI |
 | Project generation | XcodeGen (dev only) | no `.pbxproj` in git |
@@ -219,6 +221,7 @@ This is the `npm run dev`.
 - `make gallery` is `make dev` with `--gallery`, opening the component page instead of the library, for design work in isolation.
 - `make test` is `swift test`; `make check` is `swift format lint` plus `swift build`; both are what a commit is gated on.
 - Everything above works with the command-line tools alone, which is what is installed today.
+- On a machine with only the command-line tools, `make test` passes the framework search path for `Testing.framework` explicitly; Xcode removes the need.
 - Xcode 26 is needed for signing, the asset catalog, SwiftUI previews and shipping the `.app`; `project.yml` is checked in and `xcodegen` produces the project when it is installed.
 Hot reload inside a running app (InjectionNext) is an Xcode-era addition and not part of v1.
 - Sandboxed, with the user-selected-file read-write entitlement and bookmark entitlements.

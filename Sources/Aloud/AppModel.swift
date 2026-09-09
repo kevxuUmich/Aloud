@@ -1,0 +1,191 @@
+import AppKit
+import Foundation
+import Observation
+import Prose
+import Speech
+import Vault
+
+@Observable @MainActor
+final class AppModel {
+    let vault: Vault
+    let player: Player
+    let progress: ProgressStore
+    let extraction = Extraction()
+    private let rootStore = RootStore()
+    private var watcher: FolderWatcher?
+    private var openGeneration = 0
+
+    var roots: [URL] = []
+    var tree: [Folder] = []
+    var path: [Route] = []
+    var current: Document?
+    var notice: String?
+    /// True while the reader's editor has focus, which is what takes the Playback
+    /// menu's bare-key shortcuts out of the way of typing.
+    var isEditing = false
+
+    init(provider: any VoiceProvider, progress: ProgressStore = .standard()) {
+        self.player = Player(provider: provider)
+        self.progress = progress
+        let loaded = rootStore.load()
+        self.roots = loaded.urls
+        self.vault = Vault(roots: loaded.urls)
+        if loaded.unresolved > 0 {
+            let n = loaded.unresolved
+            // The bookmarks are kept: the volume may simply be unmounted.
+            self.notice =
+                n == 1
+                ? "1 vault folder is no longer reachable"
+                : "\(n) vault folders are no longer reachable"
+        }
+        player.onSentence = { [weak self] i in self?.record(index: i, finished: false) }
+        player.onFinished = { [weak self] in
+            guard let self, self.current != nil else { return }
+            self.record(index: self.player.sentenceIndex, finished: true)
+        }
+    }
+
+    func start() {
+        Task { await refresh() }
+        watch()
+        Task { await restoreLast() }
+        // The debounced write is the one thing that can still be in the air at quit.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [progress] _ in progress.flush() }
+    }
+
+    func addRoot(_ url: URL) {
+        roots = rootStore.add(url)
+        Task {
+            await vault.setRoots(roots); await refresh(); watch()
+        }
+    }
+
+    func pickRootFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Read from this folder"
+        if panel.runModal() == .OK, let url = panel.url { addRoot(url) }
+    }
+
+    func refresh() async {
+        do {
+            tree = try await vault.tree()
+            let names = unreadableNames(in: tree)
+            if !names.isEmpty {
+                notice = "Could not read: " + names.joined(separator: ", ")
+            }
+        } catch {
+            notice = "Could not read a vault folder: \(error.localizedDescription)"
+        }
+    }
+
+    /// Opening the document that is already loaded is navigation, not a load: it must
+    /// not re-extract, and above all must not reload the player, which would throw
+    /// away where the reader is. `reloading` is the one exception, a save that has
+    /// just changed the file under it.
+    func open(_ doc: Document, reloading: Bool = false) {
+        if !reloading, doc.id == current?.id {
+            if path.last != .reader(doc) { path.append(.reader(doc)) }
+            return
+        }
+        openGeneration += 1
+        let generation = openGeneration
+        Task {
+            do {
+                let kind: SourceKind = doc.type == .markdown ? .markdown : .plainText
+                let script = try await extraction.script(for: doc.url, kind: kind, options: .default)
+                guard generation == openGeneration else { return }
+                let p = progress.progress(for: doc.url)
+                current = doc
+                player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
+                if path.last != .reader(doc) { path.append(.reader(doc)) }
+            } catch {
+                guard generation == openGeneration else { return }
+                notice = "Could not read \(doc.title): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func toggleFinished(_ doc: Document) {
+        let p = progress.progress(for: doc.url)
+        progress.set(
+            PlaybackProgress(
+                sentenceIndex: p?.sentenceIndex ?? 0, finished: !(p?.finished ?? false),
+                lastPlayed: .now),
+            for: doc.url)
+    }
+
+    /// True when the write landed. The caller keeps the reader in its editing state
+    /// until it does, so a failed save never drops the draft.
+    @discardableResult
+    func saveEdit(_ text: String, to doc: Document) async -> Bool {
+        do {
+            try await vault.save(text: text, to: doc)
+            await extraction.invalidate(doc.url)
+            open(doc, reloading: true)
+            return true
+        } catch {
+            notice = "Could not save \(doc.title): \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func status(for doc: Document) -> String {
+        DocumentStatus.label(
+            progress: progress.progress(for: doc.url), isCurrent: doc.id == current?.id,
+            remaining: player.remaining, previewWords: Estimate.words(in: doc.preview),
+            bytes: doc.bytes, rateFactor: player.rate.factor)
+    }
+
+    private func record(index: Int, finished: Bool) {
+        guard let c = current else { return }
+        progress.set(PlaybackProgress(sentenceIndex: index, finished: finished, lastPlayed: .now), for: c.url)
+    }
+
+    func folder(at url: URL) -> Folder? {
+        Self.find(url: url, in: tree)
+    }
+
+    private static func find(url: URL, in folders: [Folder]) -> Folder? {
+        for f in folders {
+            if f.url == url { return f }
+            if let found = find(url: url, in: f.folders) { return found }
+        }
+        return nil
+    }
+
+    private func unreadableNames(in folders: [Folder]) -> [String] {
+        folders.flatMap { f -> [String] in
+            f.unreadable.map { $0.lastPathComponent } + unreadableNames(in: f.folders)
+        }
+    }
+
+    private func watch() {
+        watcher?.stop()
+        guard !roots.isEmpty else { return }
+        watcher = FolderWatcher(paths: roots) { [weak self] in
+            Task { @MainActor in await self?.refresh() }
+        }
+    }
+
+    private func restoreLast() async {
+        guard let path = progress.lastPlayedPath() else { return }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url), type != .pdf
+        else { return }
+        let kind: SourceKind = type == .markdown ? .markdown : .plainText
+        if let script = try? await extraction.script(for: url, kind: kind, options: .default) {
+            let doc = Document(
+                url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),
+                preview: "", modified: .now, bytes: 0, type: type)
+            current = doc
+            // The same rule open() uses: a finished document starts again at the top.
+            let p = progress.progress(for: url)
+            player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
+        }
+    }
+}

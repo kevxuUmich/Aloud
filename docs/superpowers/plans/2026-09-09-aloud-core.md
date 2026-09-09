@@ -20,7 +20,7 @@ Plan 2 covers PDF, paste-to-note, drop, search, the voice popover, the menu-bar 
 - Repo is `~/aloud`; app target `Aloud`; bundle id `design.kevxu.aloud`.
 - macOS 26 only; `platforms: [.macOS(.v26)]`; Swift 6 language mode with strict concurrency in every target.
 - No number, colour, font size or duration literal outside `Sources/AloudUI/Tokens.swift`; a test enforces it over `Sources/AloudUI` and `Sources/Aloud`.
-- Sentence splitting is `NLTokenizer(unit: .sentence)` everywhere.
+- Sentence splitting is the `Prose.SentenceSplitter` rule everywhere: terminal punctuation followed by whitespace, with an abbreviation guard, since `NLTokenizer` does not split before a lowercase sentence start.
 - Duration estimate is 160 words per minute at rate 1.0, scaled linearly by the rate factor.
 - Rate steps are exactly 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3.
 - Speech is one utterance per sentence.
@@ -796,6 +796,9 @@ git add -A && git commit -m "ui: components and the gallery"
   - `public struct Script: Hashable, Sendable { public let source: String; public let sentences: [Sentence]; public var wordCount: Int; public init(source: String, sentences: [Sentence]) }`
   - `public enum SentenceSplitter { public static func split(_ source: String) -> [Sentence] }` where paragraphs are separated by blank lines and a paragraph end always ends a sentence.
   - `public enum Estimate { public static let wordsPerMinute = 160.0; public static func duration(words: Int, factor: Double) -> Duration; public static func words(in text: String) -> Int }`
+
+Note: the `SentenceSplitter` implementation below is this task's original, `NLTokenizer`-based design.
+It was later replaced by a punctuation-rule splitter, terminal punctuation followed by whitespace with an abbreviation guard, since `NLTokenizer` does not split before a lowercase sentence start; see Global Constraints and `Sources/Prose/SentenceSplitter.swift` for the shipped rule.
 
 - [ ] **Step 1: Failing tests**
 
