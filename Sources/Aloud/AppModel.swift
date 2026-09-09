@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import Prose
 import Speech
+import UniformTypeIdentifiers
 import Vault
 
 @Observable @MainActor
@@ -71,6 +72,103 @@ final class AppModel {
         if panel.runModal() == .OK, let url = panel.url { addRoot(url) }
     }
 
+    /// The folder a new note lands in: the one that was chosen in Settings while it is
+    /// still under a root, and otherwise the first root.
+    var noteFolder: URL? {
+        if let p = Defaults.noteFolderPath, roots.contains(where: { p.hasPrefix($0.path) }) {
+            return URL(fileURLWithPath: p)
+        }
+        return roots.first
+    }
+
+    var extractOptions: ExtractOptions { ExtractOptions(skipCode: Defaults.skipCode) }
+
+    /// The folder the library is looking at, which is where a drop or an import lands.
+    var currentFolderURL: URL? {
+        if case .folder(let url)? = path.last { return url }
+        return nil
+    }
+
+    func document(at url: URL) -> Document? {
+        func find(_ folders: [Folder]) -> Document? {
+            for f in folders {
+                if let d = f.documents.first(where: { $0.url.path == url.path }) { return d }
+                if let d = find(f.folders) { return d }
+            }
+            return nil
+        }
+        return find(tree)
+    }
+
+    /// Clipboard text becomes a note in the default folder and opens ready to play.
+    func pasteNote(andPlay: Bool = false) {
+        guard
+            let text = NSPasteboard.general.string(forType: .string)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
+        else {
+            notice = "The clipboard has no text"
+            return
+        }
+        guard let folder = noteFolder else {
+            notice = "Pick a folder to read from first"
+            return
+        }
+        Task {
+            do {
+                let url = try await vault.makeNote(text: text, in: folder)
+                await refresh()
+                if let doc = document(at: url) {
+                    open(doc)
+                    if andPlay { player.play() }
+                }
+            } catch {
+                notice = "Could not save the note: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func importFiles(_ urls: [URL], into folder: URL? = nil) {
+        guard let target = folder ?? currentFolderURL ?? noteFolder else {
+            notice = "Pick a folder to read from first"
+            return
+        }
+        Task {
+            do {
+                let added = try Importer.importFiles(urls, into: target)
+                await refresh()
+                if added.isEmpty {
+                    notice = "Nothing to import: Aloud reads .md, .txt and .pdf"
+                } else if added.count == 1, let doc = document(at: added[0]) {
+                    open(doc)
+                }
+            } catch {
+                notice = "Could not import: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Dropped folders become roots; dropped files are imported into the current folder.
+    func drop(_ urls: [URL]) {
+        var isDir: ObjCBool = false
+        let folders = urls.filter {
+            FileManager.default.fileExists(atPath: $0.path, isDirectory: &isDir) && isDir.boolValue
+        }
+        let files = urls.filter { !folders.contains($0) }
+        folders.forEach(addRoot)
+        if !files.isEmpty { importFiles(files) }
+    }
+
+    func pickFilesToImport() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.plainText, .pdf, UTType(filenameExtension: "md") ?? .plainText]
+        panel.prompt = "Import"
+        if panel.runModal() == .OK { importFiles(panel.urls) }
+    }
+
     func refresh() async {
         do {
             tree = try await vault.tree()
@@ -97,7 +195,8 @@ final class AppModel {
         Task {
             do {
                 let kind = SourceKind(doc.type)
-                let script = try await extraction.script(for: doc.url, kind: kind, options: .default)
+                let script = try await extraction.script(
+                    for: doc.url, kind: kind, options: extractOptions)
                 guard generation == openGeneration else { return }
                 let p = progress.progress(for: doc.url)
                 current = doc
@@ -178,7 +277,7 @@ final class AppModel {
         guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url)
         else { return }
         let kind = SourceKind(type)
-        if let script = try? await extraction.script(for: url, kind: kind, options: .default) {
+        if let script = try? await extraction.script(for: url, kind: kind, options: extractOptions) {
             let doc = Document(
                 url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),
                 preview: "", modified: .now, bytes: 0, type: type)

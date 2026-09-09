@@ -31,8 +31,7 @@ struct LibraryView: View {
     var body: some View {
         Group {
             if model.roots.isEmpty {
-                // Paste lands in plan 2; nothing to do here yet.
-                EmptyState(onPickFolder: model.pickRootFolder, onPaste: {})
+                EmptyState(onPickFolder: model.pickRootFolder, onPaste: { model.pasteNote() })
             } else if isGone {
                 Text("This folder is gone.")
                     .font(Type.cardTitle)
@@ -71,13 +70,31 @@ struct LibraryView: View {
                     }
                     .padding(Space.xxl)
                 }
+                // Focusable so a bare Cmd+V reaches the library rather than the system;
+                // the focus effect is off because the cards inside it show focus already.
+                .focusable()
+                .focusEffectDisabled()
+                .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
             }
         }
         .navigationTitle(title)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                IconButton("folder.badge.plus", label: "Add vault folder", action: model.pickRootFolder)
+                Menu {
+                    Button("New Note from Clipboard") { model.pasteNote() }
+                    Button("Import Files...") { model.pickFilesToImport() }
+                    Divider()
+                    Button("Add Vault Folder...") { model.pickRootFolder() }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add")
+                .help("Add")
             }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            model.drop(urls)
+            return true
         }
     }
 }

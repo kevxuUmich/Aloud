@@ -33,6 +33,12 @@ struct AloudApp: App {
         }
         .defaultSize(Size.minWindow)
         .commands {
+            // Bare Cmd+V is the library's own paste and needs the library to have focus.
+            // Cmd+Shift+V is the always-available form, wherever the focus is.
+            CommandGroup(after: .pasteboard) {
+                Button("New Note from Clipboard") { model.pasteNote() }
+                    .keyboardShortcut("v", modifiers: [.command, .shift])
+            }
             CommandMenu("Playback") {
                 // Space, left and right are bare keys, so while the reader's editor has
                 // focus they would be typed characters and caret moves rather than
