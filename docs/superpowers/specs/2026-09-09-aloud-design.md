@@ -54,11 +54,11 @@ Turns a file into spoken text.
 - `Extractor` is a protocol with one requirement, `func script(from data: Data, type: DocumentType) throws -> Script`.
 - `Script` is an array of `Sentence`, each with its text and its range back in the displayed source, plus the displayed source string itself.
 - Parsing is not written here.
-Markdown is parsed by Apple's `swift-markdown` (cmark-gfm underneath, Apache-2.0), PDF text comes from the system's PDFKit, and sentences come from the system's `NLTokenizer`.
+Markdown is parsed by Apple's `swift-markdown` (cmark-gfm underneath, Apache-2.0), PDF text comes from the system's PDFKit, and sentences come from `SentenceSplitter`.
 What this target owns is only the rules that turn a parse into speech, each a short function over someone else's output.
 - `MarkdownExtractor`: a `MarkupWalker` over the `swift-markdown` tree.
 Headings become their own sentences, list markers are dropped, link text is kept and the URL dropped, emphasis is dropped, images are dropped, tables are read row by row with cells separated by commas, code blocks are replaced by the single sentence "Code block." when the skip setting is on and read verbatim when it is off, front matter between `---` fences is dropped.
-- `PlainTextExtractor`: paragraphs split on blank lines, sentences split by `NLTokenizer`.
+- `PlainTextExtractor`: paragraphs split on blank lines, sentences split by `SentenceSplitter`.
 - `PDFExtractor`: `PDFPage.string` page by page, then a cleanup pass that joins a line ending in a hyphen with the next, drops any line that appears on more than half the pages (running headers and footers), drops bare page numbers, and collapses single line breaks inside a paragraph.
 If PDFKit's reading order proves poor on real documents, `pdf_oxide` (Rust, MIT/Apache, Swift bindings, sub-millisecond per document) is the named replacement behind the same `Extractor` protocol; it is not taken now because it means shipping a prebuilt binary.
 - Extraction runs off the main actor and its result is cached per file, keyed by path and modification date, so reopening a document is instant and the library's thumbnails and estimates are computed once.
@@ -202,7 +202,7 @@ Chosen for being local, fast and small; each one is a thing not worth writing.
 |---|---|---|
 | Markdown parsing | `swift-markdown` (Apple, Apache-2.0) | cmark-gfm in C underneath, spec-complete, a visitor API that makes the speech walker about eighty lines |
 | PDF text | PDFKit (system) | zero dependency; `pdf_oxide` is the named fallback |
-| Sentence splitting | `NaturalLanguage` (system) | language-aware, free |
+| Sentence splitting | `Prose.SentenceSplitter` (ours) | punctuation rule with an abbreviation guard; `NLTokenizer` does not split before a lowercase start |
 | Speech | `AVSpeechSynthesizer` (system) | instant, offline, word timing for free |
 | Global hotkey | `KeyboardShortcuts` (sindresorhus, MIT) | Carbon hotkeys without the Carbon, plus the recorder UI |
 | Project generation | XcodeGen (dev only) | no `.pbxproj` in git |

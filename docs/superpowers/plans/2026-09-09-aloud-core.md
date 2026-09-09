@@ -797,6 +797,9 @@ git add -A && git commit -m "ui: components and the gallery"
   - `public enum SentenceSplitter { public static func split(_ source: String) -> [Sentence] }` where paragraphs are separated by blank lines and a paragraph end always ends a sentence.
   - `public enum Estimate { public static let wordsPerMinute = 160.0; public static func duration(words: Int, factor: Double) -> Duration; public static func words(in text: String) -> Int }`
 
+Note: the `SentenceSplitter` implementation below is this task's original, `NLTokenizer`-based design.
+It was later replaced by a punctuation-rule splitter, terminal punctuation followed by whitespace with an abbreviation guard, since `NLTokenizer` does not split before a lowercase sentence start; see Global Constraints and `Sources/Prose/SentenceSplitter.swift` for the shipped rule.
+
 - [ ] **Step 1: Failing tests**
 
 `Tests/ProseTests/SentenceSplitterTests.swift`:
