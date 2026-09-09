@@ -63,21 +63,14 @@ struct TransportBarView: View {
         }
     }
 
-    /// The title slot: what is loaded, or that nothing is. On the reader the title is
-    /// already on screen above the bar, so the slot shows nothing there - but it still
-    /// has to be a view that takes the column's width. An `EmptyView` is laid out as
-    /// nothing at all, the frame around it collapses with it, and the transport then
-    /// sat at the left of the reader's bar instead of at its centre. A `Spacer` and
-    /// not a `Color.clear`: in the row a spacer stretches only sideways, where a
-    /// colour stretches both ways and grew the bar to the window's height.
+    /// The title slot: what is loaded, or that nothing is. It shows on the reader too,
+    /// under the title in the toolbar: the bar looks the same on every page, and
+    /// pressing it there is a no-op apart from `open`'s check that the file has not
+    /// changed underneath.
     @ViewBuilder var title: some View {
         if let c = model.current {
-            if case .reader? = model.path.last {
-                Spacer()
-            } else {
-                Button(c.title) { model.open(c) }
-                    .font(Type.caption).buttonStyle(.plain).lineLimit(Type.singleLine)
-            }
+            Button(c.title) { model.open(c) }
+                .font(Type.caption).buttonStyle(.plain).lineLimit(Type.singleLine)
         } else {
             Text("Nothing loaded").font(Type.caption).foregroundStyle(Ink.soft)
         }
