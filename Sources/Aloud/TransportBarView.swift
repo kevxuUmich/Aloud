@@ -8,8 +8,9 @@ struct TransportBarView: View {
     @State private var showVoices = false
 
     /// Nothing loaded: the bar is still there, docked and the width of the window, but
-    /// every control in it is disabled and the title slot says so. The scrubber reads
-    /// 0:00 and ~0:00 on its own, since an empty timeline is zero long.
+    /// the scrubber and the transport controls are disabled and the title slot says so.
+    /// The scrubber reads 0:00 and ~0:00 on its own, since an empty timeline is zero
+    /// long. The voice button is the exception, and stays live.
     var isLoaded: Bool { model.current != nil }
 
     var body: some View {
@@ -39,13 +40,15 @@ struct TransportBarView: View {
                             }
                         }
                         Spacer()
-                        IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
-                            .help(player.voice?.name ?? "Voice")
-                            .popover(isPresented: $showVoices, arrowEdge: .top) {
-                                VoicePopover(model: model)
-                            }
                     }
                     .disabled(!isLoaded)
+                    // Outside the disabled group on purpose: a listener may want to hear
+                    // the voices and choose one before opening anything at all.
+                    IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
+                        .help(player.voice?.name ?? "Voice")
+                        .popover(isPresented: $showVoices, arrowEdge: .top) {
+                            VoicePopover(model: model)
+                        }
                     title
                 }
             }

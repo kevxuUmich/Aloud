@@ -52,6 +52,10 @@ final class AppModel {
     /// init and again after every write, so the toggle snaps back when a write fails.
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     var tree: [Folder] = []
+    /// Every document in the tree, flattened once per scan. The library asks whether
+    /// the vault is empty and the search asks for the corpus, both on every render;
+    /// walking the tree for each of them is the same answer computed many times.
+    private(set) var documents: [Document] = []
     /// True once a scan has come back, however it came back. An empty tree means an
     /// empty vault after this and means "not looked yet" before it, and the library
     /// shows a different thing for each.
@@ -393,6 +397,7 @@ final class AppModel {
         // A scan that failed is still a scan: the library has an answer to show, even
         // when the answer is a notice, and the first-scan spinner has to give way to it.
         scanned = true
+        documents = allDocuments(in: tree)
         await followCurrentFile(evenWhileEditing: afterOwnSave)
     }
 
@@ -485,7 +490,7 @@ final class AppModel {
             searchResults = nil
             return
         }
-        let docs = allDocuments(in: tree)
+        let docs = documents
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(Int(Motion.searchDebounceMS)))
             guard !Task.isCancelled else { return }
@@ -495,7 +500,7 @@ final class AppModel {
         }
     }
 
-    func allDocuments(in folders: [Folder]) -> [Document] {
+    private func allDocuments(in folders: [Folder]) -> [Document] {
         folders.flatMap { $0.documents + allDocuments(in: $0.folders) }
     }
 

@@ -32,7 +32,7 @@ struct LibraryView: View {
     /// documents alone: a folder does not have a body to match.
     var results: [Document]? {
         guard let hits = model.searchResults else { return nil }
-        return model.allDocuments(in: model.tree)
+        return model.documents
             .filter { hits.contains($0.id) }
             .sorted { $0.modified > $1.modified }
     }
@@ -62,7 +62,7 @@ struct LibraryView: View {
                     .font(Type.caption)
                     .foregroundStyle(Ink.soft)
                     .padding(Space.xxl)
-            } else if isTopLevel, model.scanned, model.allDocuments(in: model.tree).isEmpty,
+            } else if isTopLevel, model.scanned, model.documents.isEmpty,
                 results == nil
             {
                 // Folders are chosen and scanned, and not one of them holds a file this
