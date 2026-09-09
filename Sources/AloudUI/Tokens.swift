@@ -21,6 +21,8 @@ public enum Radius {
     public static let l: CGFloat = 20
     /// The two top corners of the docked transport bar.
     public static let dockedTop: CGFloat = l
+    /// The glyph plate in the clipboard panel.
+    public static let plate: CGFloat = m
 }
 
 public enum Size {
@@ -50,6 +52,12 @@ public enum Size {
     /// hotkey recorder on one line, and no wider, since a Form's rows are labelled at
     /// the left and stretch would only push the controls away from their labels.
     public static let settingsWidth: CGFloat = 520
+    /// The clipboard panel under the menu bar, and the square glyph plate at its left:
+    /// the Now Playing card's own proportions, so the two read as the same thing.
+    public static let clipboardPanelWidth: CGFloat = 360
+    public static let clipboardPlate: CGFloat = 88
+    /// The waveform inside the plate.
+    public static let clipboardGlyph: CGFloat = 40
 }
 
 public enum Ink {
@@ -66,6 +74,9 @@ public enum Ink {
     public static let thumbInk = Color.black
     /// The landing page's glyph: the accent, since it is the app's own mark there.
     public static let landingGlyph = Color.accentColor
+    /// The clipboard panel's plate: the accent, with the waveform in white on it.
+    public static let plate = Color.accentColor
+    public static let plateGlyph = Color.white
 }
 
 public enum Type {
@@ -93,6 +104,9 @@ public enum Type {
     public static let panelSentenceLines = 3
     /// One line and no more: a list row's title, the panel's title, the transport's.
     public static let singleLine = 1
+    /// The clipboard panel's two lines, the card's title and its subtitle.
+    public static let panelTitle = Font.headline
+    public static let panelSubtitle = Font.subheadline
 }
 
 public enum Motion {
@@ -105,4 +119,7 @@ public enum Motion {
     /// A control that is present but has nothing to act on: the menu-bar glyph with
     /// no document loaded.
     public static let dimmed: Double = 0.5
+    /// How long the panel stays when the clipboard has no text: long enough to read
+    /// two short lines, not long enough to reach for the mouse.
+    public static let emptyPanelHold: Double = 1.6
 }

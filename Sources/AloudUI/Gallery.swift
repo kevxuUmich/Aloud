@@ -4,7 +4,7 @@ public struct Gallery: View {
     public static let sections = [
         "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
-        "ListRow", "VoiceRow",
+        "ListRow", "VoiceRow", "ClipboardCard",
     ]
     public init() {}
     public var body: some View {
@@ -89,6 +89,26 @@ public struct Gallery: View {
                         VoiceRow(
                             name: "Majed", region: nil, quality: "Default",
                             isSelected: false, onPreview: {}, onPick: {})
+                    }
+                }
+                section("ClipboardCard") {
+                    VStack(alignment: .leading, spacing: Space.l) {
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            transport: .playing(isPlaying: true), progress: 0.3, elapsed: "0:46",
+                            remaining: "~1:49", onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "Nothing to read", subtitle: "The clipboard has no text",
+                            transport: .disabled, progress: 0, elapsed: "0:00", remaining: "~0:00",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "Pick a folder in Aloud first",
+                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                     }
                 }
             }
