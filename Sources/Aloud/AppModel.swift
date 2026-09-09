@@ -20,6 +20,9 @@ final class AppModel {
     var path: [Route] = []
     var current: Document?
     var notice: String?
+    /// True while the reader's editor has focus, which is what takes the Playback
+    /// menu's bare-key shortcuts out of the way of typing.
+    var isEditing = false
 
     init(provider: any VoiceProvider, progress: ProgressStore = .standard()) {
         self.player = Player(provider: provider)
@@ -46,6 +49,10 @@ final class AppModel {
         Task { await refresh() }
         watch()
         Task { await restoreLast() }
+        // The debounced write is the one thing that can still be in the air at quit.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [progress] _ in progress.flush() }
     }
 
     func addRoot(_ url: URL) {
@@ -76,7 +83,15 @@ final class AppModel {
         }
     }
 
-    func open(_ doc: Document) {
+    /// Opening the document that is already loaded is navigation, not a load: it must
+    /// not re-extract, and above all must not reload the player, which would throw
+    /// away where the reader is. `reloading` is the one exception, a save that has
+    /// just changed the file under it.
+    func open(_ doc: Document, reloading: Bool = false) {
+        if !reloading, doc.id == current?.id {
+            if path.last != .reader(doc) { path.append(.reader(doc)) }
+            return
+        }
         openGeneration += 1
         let generation = openGeneration
         Task {
@@ -111,7 +126,7 @@ final class AppModel {
         do {
             try await vault.save(text: text, to: doc)
             await extraction.invalidate(doc.url)
-            open(doc)
+            open(doc, reloading: true)
             return true
         } catch {
             notice = "Could not save \(doc.title): \(error.localizedDescription)"
@@ -120,16 +135,10 @@ final class AppModel {
     }
 
     func status(for doc: Document) -> String {
-        if let p = progress.progress(for: doc.url) {
-            if p.finished { return "Finished" }
-            if p.sentenceIndex > 0, doc.id == current?.id {
-                return Format.clock(player.remaining) + " left"
-            }
-            if p.sentenceIndex > 0 { return "In progress" }
-        }
-        let words = max(Estimate.words(in: doc.preview), doc.bytes / 6)
-        return words == 0
-            ? "" : "~" + Format.minutes(Estimate.duration(words: words, factor: player.rate.factor))
+        DocumentStatus.label(
+            progress: progress.progress(for: doc.url), isCurrent: doc.id == current?.id,
+            remaining: player.remaining, previewWords: Estimate.words(in: doc.preview),
+            bytes: doc.bytes, rateFactor: player.rate.factor)
     }
 
     private func record(index: Int, finished: Bool) {
@@ -174,7 +183,9 @@ final class AppModel {
                 url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),
                 preview: "", modified: .now, bytes: 0, type: type)
             current = doc
-            player.load(script, at: progress.progress(for: url)?.sentenceIndex ?? 0)
+            // The same rule open() uses: a finished document starts again at the top.
+            let p = progress.progress(for: url)
+            player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
         }
     }
 }

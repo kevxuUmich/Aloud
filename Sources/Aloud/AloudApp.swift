@@ -34,12 +34,18 @@ struct AloudApp: App {
         .defaultSize(Size.minWindow)
         .commands {
             CommandMenu("Playback") {
+                // Space, left and right are bare keys, so while the reader's editor has
+                // focus they would be typed characters and caret moves rather than
+                // transport. Disabling the command is what hands them back to the field.
                 Button(model.player.isPlaying ? "Pause" : "Play") { model.player.toggle() }
                     .keyboardShortcut(KeyEquivalent(" "), modifiers: [])
+                    .disabled(model.isEditing)
                 Button("Back 15 seconds") { model.player.skip(seconds: -Player.skipSeconds) }
                     .keyboardShortcut(.leftArrow, modifiers: [])
+                    .disabled(model.isEditing)
                 Button("Forward 15 seconds") { model.player.skip(seconds: Player.skipSeconds) }
                     .keyboardShortcut(.rightArrow, modifiers: [])
+                    .disabled(model.isEditing)
                 Button("Faster") { model.player.rate = model.player.rate.next }
                     .keyboardShortcut("]", modifiers: .command)
             }

@@ -60,6 +60,8 @@ struct ReaderView: View {
             }
         }
         .onChange(of: player.isPlaying) { _, playing in if playing { follow = true } }
+        .onChange(of: editing) { _, now in model.isEditing = now }
+        .onDisappear { model.isEditing = false }
         // Escape goes back to the library. While editing it does nothing, so it can
         // never be the gesture that silently discards a draft.
         .onExitCommand {
