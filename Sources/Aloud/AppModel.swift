@@ -96,7 +96,7 @@ final class AppModel {
         let generation = openGeneration
         Task {
             do {
-                let kind: SourceKind = doc.type == .markdown ? .markdown : .plainText
+                let kind = SourceKind(doc.type)
                 let script = try await extraction.script(for: doc.url, kind: kind, options: .default)
                 guard generation == openGeneration else { return }
                 let p = progress.progress(for: doc.url)
@@ -175,9 +175,9 @@ final class AppModel {
     private func restoreLast() async {
         guard let path = progress.lastPlayedPath() else { return }
         let url = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url), type != .pdf
+        guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url)
         else { return }
-        let kind: SourceKind = type == .markdown ? .markdown : .plainText
+        let kind = SourceKind(type)
         if let script = try? await extraction.script(for: url, kind: kind, options: .default) {
             let doc = Document(
                 url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),

@@ -27,6 +27,6 @@ import Testing
     }
     @Test func registryKnowsKinds() throws {
         _ = try Extractors.extractor(for: .plainText)
-        #expect(throws: ExtractError.self) { try Extractors.extractor(for: .pdf) }
+        _ = try Extractors.extractor(for: .pdf)
     }
 }

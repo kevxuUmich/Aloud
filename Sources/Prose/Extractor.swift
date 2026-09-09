@@ -27,7 +27,7 @@ public enum Extractors {
         case .markdown:
             return MarkdownExtractor()
         case .pdf:
-            throw ExtractError.unsupported(.pdf)
+            return PDFExtractor()
         }
     }
 }

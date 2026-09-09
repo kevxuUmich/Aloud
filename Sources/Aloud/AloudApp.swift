@@ -53,7 +53,7 @@ struct AloudApp: App {
     }
 
     @MainActor static func say(_ file: URL) async throws {
-        let kind: SourceKind = DocumentType(url: file) == .markdown ? .markdown : .plainText
+        let kind = SourceKind(DocumentType(url: file) ?? .plainText)
         let script = try await Extraction().script(for: file, kind: kind, options: .default)
         guard !script.sentences.isEmpty else {
             print("Nothing to read.")
