@@ -15,6 +15,13 @@ public struct VoiceGroup: Identifiable, Hashable, Sendable {
 /// The popover's list: one section per language, the one being read first, and the
 /// best voice at the top of each section.
 public enum VoiceGroups {
+    /// The reader's language as a BCP-47 tag, which is the spelling `group` sorts by.
+    /// `Locale.current.identifier` is underscored ("en_US") and the grouping splits a
+    /// tag on its dash, so asking for it in that spelling left the whole identifier in
+    /// the language slot and the current language never came first. It is written down
+    /// once here so the two pickers cannot spell it two ways again.
+    public static var currentLanguage: String { Locale.current.identifier(.bcp47) }
+
     public static func group(_ voices: [Voice], currentLanguage: String) -> [VoiceGroup] {
         let current = code(currentLanguage)
         var buckets: [String: [Voice]] = [:]

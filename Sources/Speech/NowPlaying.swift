@@ -7,10 +7,16 @@ public protocol NowPlayingCenter: AnyObject {
     func set(playing: Bool)
 }
 
+/// The handlers reach the player, which is on the main actor, and the system calls a
+/// media key back on a queue of its own choosing, so the isolation is part of the
+/// signature rather than something each implementer remembers.
 public protocol RemoteCommands: AnyObject {
     func bind(
-        play: @escaping () -> Void, pause: @escaping () -> Void, toggle: @escaping () -> Void,
-        skipForward: @escaping () -> Void, skipBackward: @escaping () -> Void)
+        play: @escaping @Sendable @MainActor () -> Void,
+        pause: @escaping @Sendable @MainActor () -> Void,
+        toggle: @escaping @Sendable @MainActor () -> Void,
+        skipForward: @escaping @Sendable @MainActor () -> Void,
+        skipBackward: @escaping @Sendable @MainActor () -> Void)
 }
 
 /// The real Now Playing panel. The keys are spelled here rather than at the call
@@ -33,31 +39,38 @@ public final class SystemNowPlayingCenter: NowPlayingCenter {
 /// The media keys and the Control Centre transport.
 public final class SystemRemoteCommands: RemoteCommands {
     public init() {}
+    /// Every target hops to the main actor the way `OutputDeviceWatcher`'s caller does:
+    /// MediaPlayer promises no particular queue, and a handler that assumed one would
+    /// trap in a listener's hands rather than in a test's. The status is answered for
+    /// the command as taken, which it is: the hop cannot fail, only land a moment later.
     public func bind(
-        play: @escaping () -> Void, pause: @escaping () -> Void, toggle: @escaping () -> Void,
-        skipForward: @escaping () -> Void, skipBackward: @escaping () -> Void
+        play: @escaping @Sendable @MainActor () -> Void,
+        pause: @escaping @Sendable @MainActor () -> Void,
+        toggle: @escaping @Sendable @MainActor () -> Void,
+        skipForward: @escaping @Sendable @MainActor () -> Void,
+        skipBackward: @escaping @Sendable @MainActor () -> Void
     ) {
         let c = MPRemoteCommandCenter.shared()
         c.playCommand.addTarget { _ in
-            play()
+            Task { @MainActor in play() }
             return .success
         }
         c.pauseCommand.addTarget { _ in
-            pause()
+            Task { @MainActor in pause() }
             return .success
         }
         c.togglePlayPauseCommand.addTarget { _ in
-            toggle()
+            Task { @MainActor in toggle() }
             return .success
         }
         c.skipForwardCommand.preferredIntervals = [NSNumber(value: Player.skipSeconds)]
         c.skipForwardCommand.addTarget { _ in
-            skipForward()
+            Task { @MainActor in skipForward() }
             return .success
         }
         c.skipBackwardCommand.preferredIntervals = [NSNumber(value: Player.skipSeconds)]
         c.skipBackwardCommand.addTarget { _ in
-            skipBackward()
+            Task { @MainActor in skipBackward() }
             return .success
         }
     }

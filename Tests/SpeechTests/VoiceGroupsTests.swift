@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Speech
@@ -14,6 +15,15 @@ import Testing
         #expect(g.first?.language == "en")
         #expect(g.first?.voices.map(\.name) == ["Daniel", "Samantha", "Aaron"])
         #expect(g.map(\.language) == ["en", "ar"])
+    }
+    /// The tag the pickers sort by has to be BCP-47: `Locale.current.identifier` is
+    /// underscored, and its language part would then be the whole "en_US", which
+    /// matches no group and sorts the reader's own language wherever the alphabet puts
+    /// it.
+    @Test func currentLanguageIsABCP47Tag() {
+        let code = VoiceGroups.code(VoiceGroups.currentLanguage)
+        #expect(!code.contains("_"))
+        #expect(code == Locale.current.language.languageCode?.identifier ?? "")
     }
     @Test func regionNameIsHuman() {
         #expect(

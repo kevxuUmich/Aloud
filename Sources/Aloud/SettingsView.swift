@@ -61,7 +61,7 @@ struct SettingsView: View {
                 ) {
                     ForEach(
                         VoiceGroups.group(
-                            model.provider.voices, currentLanguage: Locale.current.identifier)
+                            model.provider.voices, currentLanguage: VoiceGroups.currentLanguage)
                     ) { group in
                         Section(group.name) {
                             ForEach(group.voices) { v in Text(v.name).tag(v.id) }

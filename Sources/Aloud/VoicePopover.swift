@@ -13,11 +13,9 @@ struct VoicePopover: View {
     /// only change while the popover is shut, so it is done once as it opens.
     @State private var groups: [VoiceGroup] = []
 
-    /// `Locale.current.identifier` is underscored ("en_US"), and the grouping splits a
-    /// BCP-47 tag on its dash, so the tag has to be asked for in that spelling.
     private func load() {
         groups = VoiceGroups.group(
-            model.provider.voices, currentLanguage: Locale.current.identifier(.bcp47))
+            model.provider.voices, currentLanguage: VoiceGroups.currentLanguage)
     }
 
     var body: some View {
