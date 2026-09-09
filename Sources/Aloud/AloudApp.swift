@@ -32,6 +32,18 @@ struct AloudApp: App {
             if Self.showGallery { Gallery() } else { RootView(model: model) }
         }
         .defaultSize(Size.minWindow)
+        .commands {
+            CommandMenu("Playback") {
+                Button(model.player.isPlaying ? "Pause" : "Play") { model.player.toggle() }
+                    .keyboardShortcut(KeyEquivalent(" "), modifiers: [])
+                Button("Back 15 seconds") { model.player.skip(seconds: -Player.skipSeconds) }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                Button("Forward 15 seconds") { model.player.skip(seconds: Player.skipSeconds) }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                Button("Faster") { model.player.rate = model.player.rate.next }
+                    .keyboardShortcut("]", modifiers: .command)
+            }
+        }
     }
 
     @MainActor static func say(_ file: URL) async throws {
