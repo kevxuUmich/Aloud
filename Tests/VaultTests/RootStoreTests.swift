@@ -66,4 +66,34 @@ import Testing
         // accounted for, either as a URL or as an unresolved one, and none is dropped.
         #expect(loaded.urls.count + loaded.unresolved == 1)
     }
+
+    @Test func namesAnUnreachableRootAndLocatesIt() throws {
+        let defaults = suite()
+        let gone = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: gone, withIntermediateDirectories: true)
+        _ = RootStore(defaults: defaults).add(gone)
+        try FileManager.default.removeItem(at: gone)
+        let load = RootStore(defaults: defaults).load()
+        // A bookmark to a deleted folder may still resolve on APFS; either way the path is recorded.
+        #expect(load.unreachable.count + load.urls.count == 1)
+        if let path = load.unreachable.first {
+            let replacement = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: replacement, withIntermediateDirectories: true)
+            RootStore(defaults: defaults).replace(unreachablePath: path, with: replacement)
+            let after = RootStore(defaults: defaults).load()
+            #expect(after.unreachable.isEmpty)
+            #expect(after.urls.map(\.lastPathComponent) == [replacement.lastPathComponent])
+        }
+    }
+
+    @Test func pathsStayParallelToBookmarks() throws {
+        let defaults = suite()
+        let a = try tempFolder()
+        let b = try tempFolder()
+        let store = RootStore(defaults: defaults)
+        store.add(a)
+        store.add(b)
+        store.remove(a)
+        #expect(defaults.array(forKey: RootStore.pathsKey) as? [String] == [RootStore.key(b)])
+    }
 }

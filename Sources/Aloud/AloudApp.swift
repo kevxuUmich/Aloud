@@ -80,6 +80,11 @@ struct AloudApp: App {
                 .accessibilityLabel("Aloud")
         }
         .menuBarExtraStyle(.window)
+
+        // Cmd+, and the app menu's Settings item come with the scene.
+        Settings {
+            SettingsView(model: model)
+        }
     }
 
     @MainActor static func say(_ file: URL) async throws {

@@ -38,6 +38,10 @@ public enum Size {
     public static let popoverHeight: CGFloat = 440
     /// The menu-bar panel: the popover's width, so the two read as one control.
     public static let panelWidth: CGFloat = 320
+    /// The Settings window: wide enough for a folder's name, its two buttons and the
+    /// hotkey recorder on one line, and no wider, since a Form's rows are labelled at
+    /// the left and stretch would only push the controls away from their labels.
+    public static let settingsWidth: CGFloat = 520
 }
 
 public enum Ink {

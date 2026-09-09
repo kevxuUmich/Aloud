@@ -4,6 +4,7 @@ import Foundation
 import KeyboardShortcuts
 import Observation
 import Prose
+import ServiceManagement
 import Speech
 import UniformTypeIdentifiers
 import Vault
@@ -30,6 +31,16 @@ final class AppModel {
     private var started = false
 
     var roots: [URL] = []
+    /// The last known path of every root whose bookmark will not resolve, which is what
+    /// Settings names and offers to locate.
+    var unreachable: [String] = []
+    /// `Defaults.noteFolderPath` mirrored as a stored property, because `noteFolder`
+    /// reads it and a view that shows which folder is chosen has to be told when the
+    /// choice changes; observation reaches a property, never a `UserDefaults` key.
+    private var noteFolderPath: String? = Defaults.noteFolderPath
+    /// `SMAppService.mainApp.status` mirrored for the same reason. It is read once at
+    /// init and again after every write, so the toggle snaps back when a write fails.
+    var launchAtLogin = SMAppService.mainApp.status == .enabled
     var tree: [Folder] = []
     var path: [Route] = []
     var current: Document?
@@ -52,6 +63,7 @@ final class AppModel {
         self.progress = progress
         let loaded = rootStore.load()
         self.roots = loaded.urls
+        self.unreachable = loaded.unreachable
         self.vault = Vault(roots: loaded.urls)
         if loaded.unresolved > 0 {
             let n = loaded.unresolved
@@ -143,6 +155,71 @@ final class AppModel {
         }
     }
 
+    /// Settings' Remove. The bookmark goes, its scoped access with it, and the library
+    /// is rebuilt from what is left rather than filtered, so a document under two roots
+    /// survives losing one of them.
+    func removeRoot(_ url: URL) {
+        rootStore.remove(url)
+        roots.removeAll { $0.path == url.path }
+        Task {
+            await vault.setRoots(roots)
+            await refresh()
+            watch()
+        }
+    }
+
+    /// Settings' Locate. The chosen folder takes the unreachable bookmark's place, so
+    /// the root keeps its position and everything read under it keeps its progress.
+    func locate(unreachablePath: String) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Where is \(URL(fileURLWithPath: unreachablePath).lastPathComponent) now?"
+        panel.prompt = "Read from this folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        rootStore.replace(unreachablePath: unreachablePath, with: url)
+        let loaded = rootStore.load()
+        roots = loaded.urls
+        unreachable = loaded.unreachable
+        Task {
+            await vault.setRoots(roots)
+            await refresh()
+            watch()
+        }
+    }
+
+    /// The one writer of `Defaults.noteFolderPath`, the way `pickVoice` is the one
+    /// writer of the voice.
+    func setNoteFolder(_ url: URL) {
+        Defaults.noteFolderPath = url.path
+        noteFolderPath = url.path
+    }
+
+    /// Login items need a bundled, signed app: run from `make dev` this fails, and the
+    /// failure is reported rather than swallowed, so the toggle never claims a state
+    /// the system does not hold.
+    func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            notice = "Could not change Launch at login: \(error.localizedDescription)"
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
+    }
+
+    /// A setting that changes what the text is, such as skipping code blocks, has to
+    /// reach the document already open. Not while it is being edited: re-extracting
+    /// under the editor would throw the draft away.
+    func reloadCurrent() {
+        guard let doc = current, !isEditing else { return }
+        open(doc, reloading: true)
+    }
+
     func pickRootFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -155,7 +232,7 @@ final class AppModel {
     /// The folder a new note lands in: the one that was chosen in Settings while it is
     /// still under a root, and otherwise the first root.
     var noteFolder: URL? {
-        if let p = Defaults.noteFolderPath,
+        if let p = noteFolderPath,
             roots.contains(where: { Paths.isInside(p, root: $0.path) })
         {
             return URL(fileURLWithPath: p)
