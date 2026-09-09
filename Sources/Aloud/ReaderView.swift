@@ -11,9 +11,9 @@ struct ReaderView: View {
     @State private var follow = true
     @State private var editing = false
     @State private var draft = ""
-    /// One write at a time: a blur and the Done button can both ask, and two saves in
-    /// the air would race over `editing` and over the file.
-    @State private var saving = false
+    /// How many saves this reader is waiting on. `AppModel.saveEdit` is what keeps two
+    /// writes from overlapping; this is the button's state and nothing more.
+    @State private var savesInFlight = 0
     /// True while the source is being read for the editor, which is what keeps a
     /// second click on Edit from starting a second read.
     @State private var loadingDraft = false
@@ -68,7 +68,7 @@ struct ReaderView: View {
                 IconButton(editing ? "checkmark" : "pencil", label: editButtonLabel) {
                     toggleEdit()
                 }
-                .disabled(document.type == .pdf || loadingDraft)
+                .disabled(document.type == .pdf || loadingDraft || savesInFlight > 0)
                 .help(editButtonLabel)
                 IconButton("bookmark", label: "Mark finished") { model.toggleFinished(document) }
             }
@@ -151,11 +151,10 @@ struct ReaderView: View {
     /// The one write. The button stays in its editing state until the write lands, so
     /// a failed save leaves the draft on screen with the notice over it.
     func save() {
-        guard !saving else { return }
-        saving = true
+        savesInFlight += 1
         Task {
             let saved = await model.saveEdit(draft, to: document)
-            saving = false
+            savesInFlight -= 1
             if saved {
                 editing = false
                 model.isDirty = false

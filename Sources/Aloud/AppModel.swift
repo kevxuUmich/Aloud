@@ -63,6 +63,10 @@ final class AppModel {
     /// A draft whose save failed on the way out of the reader. The view it belonged
     /// to is gone, so the model holds the text until that document is edited again.
     var pendingDraft: (url: URL, text: String)?
+    /// The write in the air for each document, and what the last write that landed put
+    /// there. Together they are what makes `saveEdit` one save at a time per file.
+    private var saves: [String: Task<Bool, Never>] = [:]
+    private var lastSavedText: [String: String] = [:]
     /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
     /// glyph wiggles on. The window may be closed, so a notice would go unseen.
     var shakeCount = 0
@@ -240,7 +244,7 @@ final class AppModel {
     /// under the editor would throw the draft away.
     func reloadCurrent() {
         guard let doc = current, !isEditing else { return }
-        open(doc, reloading: true)
+        Task { await reload(doc) }
     }
 
     func pickRootFolder() {
@@ -370,10 +374,9 @@ final class AppModel {
 
     /// Opening the document that is already loaded is navigation, not a load: it must
     /// not re-extract, and above all must not reload the player, which would throw
-    /// away where the reader is. `reloading` is the one exception, a save that has
-    /// just changed the file under it.
-    func open(_ doc: Document, reloading: Bool = false) {
-        if !reloading, doc.id == current?.id {
+    /// away where the reader is.
+    func open(_ doc: Document) {
+        if doc.id == current?.id {
             if path.last != .reader(doc) { path.append(.reader(doc)) }
             return
         }
@@ -385,22 +388,38 @@ final class AppModel {
                 let script = try await extraction.script(
                     for: doc.url, kind: kind, options: extractOptions)
                 guard generation == openGeneration else { return }
-                // A reload refreshes the document on screen. If the reader has moved
-                // on while the write and the re-extraction were in the air, this is a
-                // stale reload and must not take `current` or the player back.
-                if reloading, current?.id != doc.id { return }
                 let p = progress.progress(for: doc.url)
                 current = doc
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
                 nowPlaying?.update(title: doc.title)
-                // A reload is not navigation: it refreshes the script under whatever
-                // is on screen. Pushing here would send a reader who has just left the
-                // document, saving on the way out, straight back into it.
-                if !reloading, path.last != .reader(doc) { path.append(.reader(doc)) }
+                if path.last != .reader(doc) { path.append(.reader(doc)) }
             } catch {
                 guard generation == openGeneration else { return }
                 notice = "Could not read \(doc.title): \(error.localizedDescription)"
             }
+        }
+    }
+
+    /// The file changed under the document being read: a save, a setting that changes
+    /// what the text is, or the folder watcher seeing it change on disk. It is not
+    /// navigation and must never be mistaken for it, so it leaves `openGeneration` and
+    /// `path` alone: bumping the generation would cancel a load the reader had already
+    /// asked for, and pushing a route would send a reader who has just left the
+    /// document straight back into it. The sentence is anchored rather than restored
+    /// from progress, because the reader is standing in this document right now and
+    /// the store is only debounced.
+    func reload(_ doc: Document) async {
+        guard current?.id == doc.id else { return }
+        let anchor = player.sentenceIndex
+        do {
+            let script = try await extraction.script(
+                for: doc.url, kind: SourceKind(doc.type), options: extractOptions)
+            // The reader may have opened something else while this was extracting.
+            guard current?.id == doc.id else { return }
+            player.load(script, at: anchor)
+            nowPlaying?.update(title: doc.title)
+        } catch {
+            notice = "Could not read \(doc.title): \(error.localizedDescription)"
         }
     }
 
@@ -450,16 +469,36 @@ final class AppModel {
 
     /// True when the write landed. The caller keeps the reader in its editing state
     /// until it does, so a failed save never drops the draft.
+    ///
+    /// This is the only way text reaches the file, and it is the funnel that keeps two
+    /// saves of one document from overlapping: a blur and the Done button that follows
+    /// it, or a blur and the back button. A caller arriving while a write is in the air
+    /// waits for it, and then writes only if its own text is not what that write put on
+    /// disk - which in the blur-then-Done case it is.
     @discardableResult
     func saveEdit(_ text: String, to doc: Document) async -> Bool {
+        let key = doc.url.path
+        if let inFlight = saves[key] {
+            let landed = await inFlight.value
+            if landed, lastSavedText[key] == text { return true }
+        }
+        let task = Task { await write(text, to: doc) }
+        saves[key] = task
+        let landed = await task.value
+        if saves[key] == task { saves[key] = nil }
+        return landed
+    }
+
+    /// The write itself, only ever reached through `saveEdit`.
+    private func write(_ text: String, to doc: Document) async -> Bool {
         do {
             try await vault.save(text: text, to: doc)
+            lastSavedText[doc.url.path] = text
             await extraction.invalidate(doc.url)
-            // Only the document still being read is reloaded. A save on the way out
-            // of a reader the user has already left behind would otherwise pull
-            // `current` and the player back to it; the folder watcher picks the
-            // change up when they return.
-            if current?.id == doc.id { open(doc, reloading: true) }
+            // The reload is for the document still being read. A save on the way out
+            // of a reader the user has already left behind changes the file and
+            // nothing else; the folder watcher picks it up when they return.
+            Task { await reload(doc) }
             return true
         } catch {
             notice = "Could not save \(doc.title): \(error.localizedDescription)"
