@@ -24,4 +24,28 @@ import Testing
             sentences: SentenceSplitter.split("one two three. four five."))
         #expect(sc.wordCount == 5)
     }
+    @Test func abbreviationDoesNotEndASentence() {
+        let out = SentenceSplitter.split("see e.g. the appendix. then stop.")
+        #expect(out.count == 2)
+    }
+    @Test func titleAbbreviationDoesNotEndASentence() {
+        let out = SentenceSplitter.split("dr. hamming asked. people left.")
+        #expect(out.count == 2)
+    }
+    @Test func singleLetterInitialDoesNotEndASentence() {
+        let out = SentenceSplitter.split("j. schulman's guide. two modes.")
+        #expect(out.count == 2)
+    }
+    @Test func noBeforeADigitDoesNotEndASentence() {
+        let out = SentenceSplitter.split("issue no. 5 shipped. done.")
+        #expect(out.count == 2)
+    }
+    @Test func noBeforeAWordEndsASentence() {
+        let out = SentenceSplitter.split("the answer was no. we left.")
+        #expect(out.count == 2)
+    }
+    @Test func closingQuoteStillEndsASentence() {
+        let out = SentenceSplitter.split("he said 'stop.' then left.")
+        #expect(out.count == 2)
+    }
 }
