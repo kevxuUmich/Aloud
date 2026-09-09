@@ -42,6 +42,13 @@ struct LibraryView: View {
         Group {
             if model.roots.isEmpty {
                 EmptyState(onPickFolder: model.pickRootFolder, onPaste: { model.pasteNote() })
+            } else if isTopLevel, model.tree.isEmpty {
+                // The roots are known and the first scan has not come back yet. An
+                // empty grid here would read as an empty vault, which it is not.
+                ProgressView("Scanning your folders")
+                    .font(Type.caption)
+                    .foregroundStyle(Ink.soft)
+                    .padding(Space.xxl)
             } else if isGone {
                 Text("This folder is gone.")
                     .font(Type.cardTitle)

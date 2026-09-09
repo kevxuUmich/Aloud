@@ -164,6 +164,28 @@ final class ClickableTextView: NSTextView {
         coordinator?.parent.onClick(index)
     }
 
+    /// Scrolling by keyboard is scrolling: page up and down, the arrows, and space,
+    /// which pages a text view that is not being edited. Each cancels follow the way a
+    /// drag on the scroller does, so the reader who has gone looking is not dragged
+    /// back at the next sentence. In the editor these keys move the caret and the
+    /// reader is not following anything, so nothing is cancelled.
+    override func keyDown(with event: NSEvent) {
+        if !isEditable, Self.scrollKeys.contains(Int(event.keyCode)) {
+            coordinator?.parent.onUserScroll()
+        }
+        super.keyDown(with: event)
+    }
+
+    /// Page up, page down, home, end, the four arrows, and space.
+    private static let scrollKeys: Set<Int> = [116, 121, 115, 119, 123, 124, 125, 126, 49]
+
+    /// A wheel or a two-finger swipe. `willStartLiveScroll` covers the scroller and
+    /// the drag; the momentum a trackpad throws afterwards arrives here alone.
+    override func scrollWheel(with event: NSEvent) {
+        coordinator?.parent.onUserScroll()
+        super.scrollWheel(with: event)
+    }
+
     /// The character actually under `point`, or nil when the point is in the padding,
     /// past the end of a line, or below the last line. `characterIndexForInsertion`
     /// answers with the nearest character everywhere, which would turn a click on the

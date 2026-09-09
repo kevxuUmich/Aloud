@@ -11,7 +11,11 @@ public struct Gallery: View {
             VStack(alignment: .leading, spacing: Space.xxl) {
                 section("GlassBar") {
                     GlassBar {
-                        Text("Left"); Spacer(); Text("Right")
+                        HStack(spacing: Space.l) {
+                            Text("Left")
+                            Spacer()
+                            Text("Right")
+                        }
                     }
                 }
                 section("Card") {

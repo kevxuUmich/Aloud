@@ -29,6 +29,15 @@ final class AppModel {
     /// Everything below it is process-wide - one Now Playing, one device listener, one
     /// terminate observer - so it must happen once however many times it is asked for.
     private var started = false
+    /// The block-based observer `start()` registers. The centre holds it until it is
+    /// removed by hand, so the token is kept for `deinit` to hand back.
+    /// A `deinit` is nonisolated even on a `@MainActor` type and cannot read an
+    /// isolated property, so the token is held outside the actor's isolation. It is
+    /// also held outside observation: nothing renders it, and `@ObservationTracked`
+    /// would make it a computed property, which `nonisolated(unsafe)` cannot describe.
+    /// It is written once, from `start()`, behind the `started` guard, and read once,
+    /// when the last reference is already gone, so there is no second thread to race.
+    @ObservationIgnored private nonisolated(unsafe) var terminateObserver: (any NSObjectProtocol)?
 
     var roots: [URL] = []
     /// Every root whose bookmark will not resolve, which is what Settings names and
@@ -136,9 +145,13 @@ final class AppModel {
         watch()
         Task { await restoreLast() }
         // The debounced write is the one thing that can still be in the air at quit.
-        NotificationCenter.default.addObserver(
+        terminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [progress] _ in progress.flush() }
+    }
+
+    deinit {
+        if let terminateObserver { NotificationCenter.default.removeObserver(terminateObserver) }
     }
 
     /// The hotkey: whatever text is on the clipboard becomes a note and starts playing,
@@ -370,6 +383,20 @@ final class AppModel {
         } catch {
             notice = "Could not read a vault folder: \(error.localizedDescription)"
         }
+        await followCurrentFile()
+    }
+
+    /// The document being read changed on disk - saved in another editor, rewritten by
+    /// a script - so the reader follows it, re-anchored on the sentence it was reading.
+    /// Not while it is being edited: the draft in the editor is the newer text, and
+    /// re-extracting under it would throw that away.
+    private func followCurrentFile() async {
+        guard let c = current, !isEditing, let fresh = document(at: c.url),
+            fresh.modified != c.modified
+        else { return }
+        let anchorText = currentSentenceText
+        current = fresh
+        await reload(fresh, anchorText: anchorText)
     }
 
     /// Opening the document that is already loaded is navigation, not a load: it must
@@ -378,6 +405,11 @@ final class AppModel {
     func open(_ doc: Document) {
         if doc.id == current?.id {
             if path.last != .reader(doc) { path.append(.reader(doc)) }
+            // Reopening after the file changed underneath: the route alone would show
+            // the reader the text it had when they left it. `followCurrentFile` is the
+            // one place that decides, and it decides on the tree's copy rather than on
+            // whatever `doc` a card was holding.
+            Task { await followCurrentFile() }
             return
         }
         openGeneration += 1
@@ -408,7 +440,17 @@ final class AppModel {
     /// document straight back into it. The sentence is anchored rather than restored
     /// from progress, because the reader is standing in this document right now and
     /// the store is only debounced.
-    func reload(_ doc: Document) async {
+    ///
+    /// `anchorText` is the sentence that was being read when the file changed. Given
+    /// one, its place is found again in the fresh script rather than trusted: an insert
+    /// above the reader moves every sentence below it, and the old number would land on
+    /// the wrong line. Without one - a setting change, which rewrites the same source -
+    /// the index already names the same place.
+    ///
+    /// A load stops the synthesizer, so playback is taken and handed back around it;
+    /// otherwise a file changed mid-sentence would leave the reader silent with no
+    /// press to explain it.
+    func reload(_ doc: Document, anchorText: String? = nil) async {
         guard current?.id == doc.id else { return }
         let anchor = player.sentenceIndex
         do {
@@ -416,8 +458,11 @@ final class AppModel {
                 for: doc.url, kind: SourceKind(doc.type), options: extractOptions)
             // The reader may have opened something else while this was extracting.
             guard current?.id == doc.id else { return }
-            player.load(script, at: anchor)
+            let at = anchorText.map { ScriptAnchor.index(of: $0, near: anchor, in: script) } ?? anchor
+            let wasPlaying = player.isPlaying
+            player.load(script, at: at)
             nowPlaying?.update(title: doc.title)
+            if wasPlaying { player.play() }
         } catch {
             notice = "Could not read \(doc.title): \(error.localizedDescription)"
         }
