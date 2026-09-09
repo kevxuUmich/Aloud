@@ -281,7 +281,7 @@ final class AppModel {
         }
         while let save = saves[key] {
             _ = await save.task.value
-            // `saveEdit` clears the slot only while it is still the entry it made, and
+            // A save clears the slot only while it is still the entry it made, and
             // clearing it here under the same guard is what ends this loop. A newer
             // save that has taken the slot meanwhile is waited for on the next turn.
             if saves[key] === save { saves[key] = nil }
@@ -646,26 +646,36 @@ final class AppModel {
     /// disk - which in the blur-then-Done case it is.
     @discardableResult
     func saveEdit(_ text: String, to doc: Document) async -> Bool {
+        await enqueueSave(text, to: doc).value
+    }
+
+    /// The synchronous half of `saveEdit`: the place in the queue is taken here, before
+    /// the first suspension, and the write waits on the one in front of it rather than
+    /// on whatever is in the slot when it wakes. Waking and looking again is not the
+    /// same thing: a task's waiters are not woken in the order they began to wait, so
+    /// of three saves of one file the second and third could swap and the older text
+    /// be the one left on disk.
+    ///
+    /// It is its own entry so the order can be tested: three `async let` calls of
+    /// `saveEdit` are three child tasks with no promise about which runs first, so a
+    /// test that used them could see the queue formed in a different order from its
+    /// source and read the wrong text back. Three calls of this on the main actor form
+    /// the queue in the order they are written.
+    func enqueueSave(_ text: String, to doc: Document) -> Task<Bool, Never> {
         let key = doc.url.path
-        // The place in the queue is taken here, synchronously, and the write waits on
-        // the one in front of it rather than on whatever is in the slot when it wakes.
-        // Waking and looking again is not the same thing: a task's waiters are not
-        // woken in the order they began to wait, so of three saves of one file the
-        // second and third could swap and the older text be the one left on disk.
         let previous = saves[key]
         let save = Save()
         saves[key] = save
         save.task = Task { [weak self] in
             let landed = await previous?.task.value ?? true
             guard let self else { return false }
+            defer { if self.saves[key] === save { self.saves[key] = nil } }
             // The write in front put this very text on disk - a blur and the Done click
             // that follows it - so there is nothing left to write.
             if landed, self.lastSavedText[key] == text { return true }
             return await self.write(text, to: doc)
         }
-        let landed = await save.task.value
-        if saves[key] === save { saves[key] = nil }
-        return landed
+        return save.task
     }
 
     /// A write in the air, held by reference so the funnel can ask whether the queue's

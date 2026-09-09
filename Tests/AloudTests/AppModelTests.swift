@@ -55,15 +55,21 @@ import Vault
         }
     }
 
+    /// Overlapping saves are queued through `enqueueSave` rather than `async let`
+    /// `saveEdit`s: the child tasks of an `async let` have no fixed start order, and
+    /// once in a while "one" took its place in the queue after "two" and the wrong text
+    /// was read back. `enqueueSave` takes the place synchronously, so three calls in a
+    /// row form the queue the suite means.
+    ///
     /// The blur and the Done click that follows it. The second save waits for the
     /// first and finds its own text already on disk, so the file is written once.
     @Test func aBlurAndTheDoneThatFollowsItWriteOnce() async throws {
         try await withModel { model, dir in
             let doc = try document("old", named: "note.md", in: dir)
-            async let blur = model.saveEdit("new", to: doc)
-            async let done = model.saveEdit("new", to: doc)
-            #expect(await blur)
-            #expect(await done)
+            let blur = model.enqueueSave("new", to: doc)
+            let done = model.enqueueSave("new", to: doc)
+            #expect(await blur.value)
+            #expect(await done.value)
             #expect(await model.vault.writes == 1)
             #expect(try String(contentsOf: doc.url, encoding: .utf8) == "new")
         }
@@ -74,12 +80,12 @@ import Vault
     @Test func theNewestOfThreeOverlappingSavesIsWhatLands() async throws {
         try await withModel { model, dir in
             let doc = try document("old", named: "note.md", in: dir)
-            async let first = model.saveEdit("one", to: doc)
-            async let second = model.saveEdit("two", to: doc)
-            async let third = model.saveEdit("three", to: doc)
-            #expect(await first)
-            #expect(await second)
-            #expect(await third)
+            let first = model.enqueueSave("one", to: doc)
+            let second = model.enqueueSave("two", to: doc)
+            let third = model.enqueueSave("three", to: doc)
+            #expect(await first.value)
+            #expect(await second.value)
+            #expect(await third.value)
             #expect(await model.vault.writes == 3)
             #expect(try String(contentsOf: doc.url, encoding: .utf8) == "three")
         }
@@ -92,12 +98,12 @@ import Vault
     @Test func aSaveWhoseTextIsAlreadyOnDiskWhenItsTurnComesWritesNothing() async throws {
         try await withModel { model, dir in
             let doc = try document("old", named: "note.md", in: dir)
-            async let first = model.saveEdit("one", to: doc)
-            async let second = model.saveEdit("two", to: doc)
-            async let third = model.saveEdit("two", to: doc)
-            #expect(await first)
-            #expect(await second)
-            #expect(await third)
+            let first = model.enqueueSave("one", to: doc)
+            let second = model.enqueueSave("two", to: doc)
+            let third = model.enqueueSave("two", to: doc)
+            #expect(await first.value)
+            #expect(await second.value)
+            #expect(await third.value)
             #expect(await model.vault.writes == 2)
             #expect(try String(contentsOf: doc.url, encoding: .utf8) == "two")
         }
