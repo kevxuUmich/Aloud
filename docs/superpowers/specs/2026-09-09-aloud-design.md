@@ -79,6 +79,9 @@ Wraps `AVSpeechSynthesizer` and is the only thing that talks to it.
 - Voices are grouped by language, current system language first, and each carries a quality tag from `AVSpeechSynthesisVoiceQuality`.
 - Registers with `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, so keyboard media keys, AirPods and the Now Playing widget work.
 - Pauses itself when the default output device changes or disappears, observed through CoreAudio's default-device property listener; macOS has no `AVAudioSession`.
+- The pause posts a notice so a listener knows why the voice stopped.
+- A voice that is no longer installed falls back to the system voice and posts a notice naming the voice that went.
+- Previewing a voice stops the utterance in the air and leaves the reader on the same sentence, so Play speaks it again from its start.
 
 ### `AloudUI`
 
@@ -123,8 +126,11 @@ A grid of the current folder.
 - Toolbar: back when inside a folder, search field filtering by title and body, a `+` menu with New note from clipboard, Import files, Add vault folder, and a grid/list toggle.
 - Dropping files or folders onto the window copies files into the current vault folder and adds folders as new roots after asking which.
 - Cmd+V with no text field focused creates a note from the clipboard and opens it.
+- Cmd+Shift+V does the same from anywhere in the app, since bare Cmd+V reaches the library only when it has focus.
 - Right-click on a card: Play, Mark finished, Reveal in Finder, Delete (moves to Trash).
-- First-launch empty state is one glass panel with two actions, "Pick a folder to read from" and "Paste anything", and nothing else.
+- The empty landing fills the window: the waveform glyph, "Aloud", one sentence, the two buttons "Choose a folder" and "Paste from clipboard", and a hint that files can be dropped anywhere in the window and that the hotkey reads the clipboard from any app.
+- A vault that has been added but holds nothing readable shows the same landing with "Import files" in place of "Choose a folder".
+- The transport bar is there behind both landings, since it is the app's one transport and a control that appears only once something is loaded is a control nobody learns.
 
 ### Reader
 
@@ -135,13 +141,17 @@ Pushed from the library, title in the toolbar.
 - Click on a sentence seeks to it and, if paused, starts playing.
 - Auto-scroll keeps the spoken sentence in the upper third; a manual scroll disables following until play is pressed or a sentence is clicked.
 - Edit button turns the body into a plain text editor for `.md` and `.txt`, saved atomically on blur or Cmd+S, and playback stops while editing; PDFs show Edit disabled with a tooltip.
-- Editing a Markdown file edits its raw source, not the extracted prose; v1's first plan restricts Edit to plain text until the raw-source editor lands.
+- Edit shows the raw file for `.md` and `.txt` and writes it back verbatim; Done, blur and Cmd+S all save, and leaving the reader with a dirty draft saves on the way out.
+- A save that fails on the way out keeps the draft on the model until that document is opened for editing again, so nothing is lost with the view gone.
+- Saves are serialized per document, so a blur and the Done click that follows it write once.
 - Mark finished toggles the progress flag and is what the library's `Finished` reads.
 - Escape or the back button returns to the library without stopping playback.
 
 ### Transport bar
 
-A glass bar across the bottom of both the library and the reader, shown from the first time a document is loaded in the session.
+A glass bar docked flush to the bottom edge of the window and the full width of it, on both the library and the reader.
+
+It is always present, from first launch onward; with nothing loaded the scrubber and the transport controls are disabled and the title slot reads "Nothing loaded", and the voice button stays enabled so a listener can hear the voices before opening anything.
 
 - Row one: elapsed, a scrubber that seeks by sentence, remaining as `~m:ss`.
 - Row two, left: the rate button showing `1x`; click cycles the steps, right-click shows them all.
@@ -160,6 +170,7 @@ A glass bar across the bottom of both the library and the reader, shown from the
 ### Menu-bar item
 
 - A waveform glyph, animated while speaking, still when paused, dimmed when nothing is loaded.
+- The glyph is `waveform` and animates with `variableColor` while speaking; if that does not animate in the status item, the fallback is a static `waveform.slash` while paused.
 - Click opens a small glass panel: title, the sentence being spoken, back 15 s, play/pause, forward 15 s, the rate button, and Open Aloud.
 - Closing the window does not stop playback; Quit does.
 - The hotkey's paste-and-play works with the window closed.
@@ -168,6 +179,9 @@ A glass bar across the bottom of both the library and the reader, shown from the
 
 Vault folders (add, remove, choose the default for new notes), default voice, default rate, hotkey, whether code blocks are skipped, launch at login, and whether the menu-bar item is shown.
 
+A root whose bookmark will not resolve is listed by its last known path with Locate and Remove, rather than dropped, since the volume may only be unmounted.
+Launch at login is registered through `SMAppService` and takes effect only in the signed, bundled build.
+
 ## Data flow
 
 1. Launch resolves the bookmarks, walks the roots, restores the last document from the progress store into the player, paused.
@@ -175,6 +189,7 @@ Vault folders (add, remove, choose the default for new notes), default voice, de
 3. The `Player` publishes indices; the reader maps them to ranges through the `Script` for highlight and scroll.
 4. Every sentence boundary writes `sentenceIndex` to the progress store, debounced at 1 s; the last sentence sets `finished`.
 5. A file change under a root re-walks the tree; if the open document changed on disk and is not being edited, it is re-extracted and playback resumes at the same sentence text where it still exists, else at the nearest index.
+6. A save from the editor triggers one reload through the same path, anchored at the current sentence.
 
 ## Error handling
 
@@ -204,7 +219,7 @@ Chosen for being local, fast and small; each one is a thing not worth writing.
 | PDF text | PDFKit (system) | zero dependency; `pdf_oxide` is the named fallback |
 | Sentence splitting | `Prose.SentenceSplitter` (ours) | punctuation rule with an abbreviation guard; `NLTokenizer` does not split before a lowercase start |
 | Speech | `AVSpeechSynthesizer` (system) | instant, offline, word timing for free |
-| Global hotkey | `KeyboardShortcuts` (sindresorhus, MIT) | Carbon hotkeys without the Carbon, plus the recorder UI |
+| Global hotkey | `KeyboardShortcuts` (sindresorhus, MIT) | Carbon hotkeys without the Carbon, plus the recorder UI; pinned to 1.15.0 while the machine has only the command-line tools, since 1.16 and later carry `#Preview` blocks that need Xcode's macro plugin; move to 2.x once Xcode is installed |
 | Project generation | XcodeGen (dev only) | no `.pbxproj` in git |
 | File watching for dev | `watchexec` (brew, dev only) | the rebuild loop |
 
@@ -222,7 +237,9 @@ This is the `npm run dev`.
 - `make test` is `swift test`; `make check` is `swift format lint` plus `swift build`; both are what a commit is gated on.
 - Everything above works with the command-line tools alone, which is what is installed today.
 - On a machine with only the command-line tools, `make test` passes the framework search path for `Testing.framework` explicitly; Xcode removes the need.
+- `Aloud --say <file>` speaks a file from the terminal, and `Aloud --silent` runs with the fake voice, so the UI can be worked on without a word being spoken.
 - Xcode 26 is needed for signing, the asset catalog, SwiftUI previews and shipping the `.app`; `project.yml` is checked in and `xcodegen` produces the project when it is installed.
+- The Xcode step is required for the sandboxed build and for `SMAppService`: `xcodegen generate`, open `Aloud.xcodeproj`, sign with your team.
 Hot reload inside a running app (InjectionNext) is an Xcode-era addition and not part of v1.
 - Sandboxed, with the user-selected-file read-write entitlement and bookmark entitlements.
 - Distribution and pricing are not part of this spec.
