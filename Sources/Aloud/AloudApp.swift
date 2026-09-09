@@ -15,6 +15,8 @@ struct AloudApp: App {
     }
 
     @MainActor static var sayPlayer: Player?
+    /// The skip interval as the menu says it, so the titles cannot drift from the step.
+    static let skipStep = Int(Player.skipSeconds)
 
     @State private var model: AppModel
 
@@ -35,6 +37,10 @@ struct AloudApp: App {
         .commands {
             // Bare Cmd+V is the library's own paste and needs the library to have focus.
             // Cmd+Shift+V is the always-available form, wherever the focus is.
+            // One window: the model's listeners, the Now Playing mirror and the device
+            // watcher are all process-wide, and a second window would be a second
+            // library looking at the same player.
+            CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .pasteboard) {
                 Button("New Note from Clipboard") { model.pasteNote() }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
@@ -46,10 +52,10 @@ struct AloudApp: App {
                 Button(model.player.isPlaying ? "Pause" : "Play") { model.player.toggle() }
                     .keyboardShortcut(KeyEquivalent(" "), modifiers: [])
                     .disabled(model.isEditing)
-                Button("Back 15 seconds") { model.player.skip(seconds: -Player.skipSeconds) }
+                Button("Back \(Self.skipStep) seconds") { model.player.skip(seconds: -Player.skipSeconds) }
                     .keyboardShortcut(.leftArrow, modifiers: [])
                     .disabled(model.isEditing)
-                Button("Forward 15 seconds") { model.player.skip(seconds: Player.skipSeconds) }
+                Button("Forward \(Self.skipStep) seconds") { model.player.skip(seconds: Player.skipSeconds) }
                     .keyboardShortcut(.rightArrow, modifiers: [])
                     .disabled(model.isEditing)
                 Button("Faster") { model.setRate(model.player.rate.next) }

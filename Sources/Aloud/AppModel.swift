@@ -23,6 +23,10 @@ final class AppModel {
     private var nowPlaying: NowPlaying?
     private var deviceWatcher: OutputDeviceWatcher?
     private var openGeneration = 0
+    /// `start()` is called from the scene body, which runs again for a second window.
+    /// Everything below it is process-wide - one Now Playing, one device listener, one
+    /// terminate observer - so it must happen once however many times it is asked for.
+    private var started = false
 
     var roots: [URL] = []
     var tree: [Folder] = []
@@ -83,13 +87,18 @@ final class AppModel {
     }
 
     func start() {
+        guard !started else { return }
+        started = true
         nowPlaying = NowPlaying(player: player)
-        deviceWatcher = OutputDeviceWatcher {
+        // `[weak self]` belongs on the outer closure: on the inner `Task` alone, the
+        // `@Sendable` closure the watcher holds still captures `self` strongly, and the
+        // model owns the watcher, so the pair would never be freed.
+        deviceWatcher = OutputDeviceWatcher { [weak self] in
             // CoreAudio calls this on its own queue, so the hop is the listener's job.
-            Task { @MainActor [weak self] in
-                guard self?.player.isPlaying == true else { return }
-                self?.player.pause()
-                self?.notice = "Paused: the output device changed"
+            Task { @MainActor in
+                guard let self, self.player.isPlaying else { return }
+                self.player.pause()
+                self.notice = "Paused: the output device changed"
             }
         }
         Task { await refresh() }

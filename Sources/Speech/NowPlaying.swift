@@ -122,19 +122,21 @@ public final class NowPlaying {
         center.set(playing: player.isPlaying)
     }
 
-    /// Re-pushes whenever the player's observed state changes.
+    /// Re-pushes whenever the player's observed state changes. `Observations` is used
+    /// rather than a hand-rolled `withObservationTracking` loop because the loop's
+    /// `while let self` held `self` across every suspension: `deinit` could never run,
+    /// so cancellation had nothing to cancel it from and the task outlived its owner.
+    /// Here `self` is only bound for the length of one push.
     private func observe() {
         observation = Task { [weak self] in
-            while let self, !Task.isCancelled {
-                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                    withObservationTracking {
-                        _ = self.player.isPlaying
-                        _ = self.player.sentenceIndex
-                        _ = self.player.rate
-                    } onChange: {
-                        c.resume()
-                    }
-                }
+            let stream = Observations { [weak self] in
+                (
+                    self?.player.isPlaying, self?.player.sentenceIndex, self?.player.rate,
+                    self?.player.timeline.total
+                )
+            }
+            for await _ in stream {
+                guard let self else { return }
                 self.push()
             }
         }

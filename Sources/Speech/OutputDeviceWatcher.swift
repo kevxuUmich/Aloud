@@ -18,6 +18,8 @@ public final class OutputDeviceWatcher: @unchecked Sendable {
             AudioObjectID(kAudioObjectSystemObject), &address, queue, block)
     }
 
+    /// Must not be called from the listener block: `stop` is synchronous on the same
+    /// serial queue the block runs on, so doing that deadlocks.
     public func stop() {
         queue.sync {
             guard !stopped, let block else { return }
