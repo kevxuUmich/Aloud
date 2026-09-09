@@ -1,4 +1,5 @@
 import AloudUI
+import AppKit
 import SwiftUI
 import Vault
 
@@ -22,8 +23,28 @@ struct RootView: View {
         }
         .overlay(alignment: .top) {
             if let n = model.notice {
-                Notice(n).padding(Space.l).onTapGesture { model.notice = nil }
+                // A tap gesture on a plain view is invisible to the keyboard and to
+                // VoiceOver; the dismissal is a button, styled as the notice itself.
+                Button {
+                    model.notice = nil
+                } label: {
+                    Notice(n)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss notice: \(n)")
+                .padding(Space.l)
             }
+        }
+        // A notice can arrive while the reader is elsewhere on screen, so it is spoken
+        // rather than only drawn.
+        .onChange(of: model.notice) { _, now in
+            guard let now else { return }
+            NSAccessibility.post(
+                element: NSApp.mainWindow ?? NSApp as Any, notification: .announcementRequested,
+                userInfo: [
+                    .announcement: now,
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue,
+                ])
         }
         .frame(minWidth: Size.minWindow.width, minHeight: Size.minWindow.height)
         .task { model.start() }

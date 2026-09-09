@@ -52,10 +52,11 @@ struct ReaderView: View {
                 }
                 // Editing writes the prose back, which for Markdown would lose the
                 // formatting; raw-source editing lands in plan 2.
-                IconButton(editing ? "checkmark" : "pencil", label: editing ? "Done editing" : "Edit") {
+                IconButton(editing ? "checkmark" : "pencil", label: editButtonLabel) {
                     toggleEdit()
                 }
                 .disabled(document.type != .plainText)
+                .help(editButtonLabel)
                 IconButton("bookmark", label: "Mark finished") { model.toggleFinished(document) }
             }
         }
@@ -68,6 +69,12 @@ struct ReaderView: View {
             guard !editing, !model.path.isEmpty else { return }
             model.path.removeLast()
         }
+    }
+
+    /// Distinct per state, so the button never announces an action it will not perform.
+    var editButtonLabel: String {
+        if editing { return "Done editing" }
+        return document.type == .plainText ? "Edit" : "Editing Markdown arrives later"
     }
 
     func nsRange(_ r: Range<String.Index>?) -> NSRange? {

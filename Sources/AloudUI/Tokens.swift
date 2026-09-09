@@ -55,6 +55,9 @@ public enum Type {
     /// The five reader sizes, indexed by the A/A stepper.
     public static let readerSizes: [CGFloat] = [15, 17, 19, 22, 26]
     public static let readerDefaultIndex = 1
+    /// A card's title is truncated to two lines, so a long first line cannot push the
+    /// status off the bottom of the cell.
+    public static let cardTitleLines = 2
     public static let readerLineHeightMultiple: CGFloat = 1.45
 }
 

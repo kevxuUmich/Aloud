@@ -13,10 +13,13 @@ public struct FolderCard: View {
                 .resizable().scaledToFit()
                 .foregroundStyle(Ink.accent)
                 .frame(width: Size.thumb.width, height: Size.thumb.height)
-            Text(name).font(Type.cardTitle).lineLimit(2)
+                .accessibilityHidden(true)
+            Text(name).font(Type.cardTitle).lineLimit(Type.cardTitleLines)
             Text(count == 0 ? "Empty folder" : "\(count) documents")
                 .font(Type.caption).foregroundStyle(Ink.soft)
         }
         .frame(width: Size.cardWidth)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name), \(count) documents")
     }
 }
