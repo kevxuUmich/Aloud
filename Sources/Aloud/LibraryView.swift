@@ -70,10 +70,10 @@ struct LibraryView: View {
                     }
                     .padding(Space.xxl)
                 }
-                // Focusable so a bare Cmd+V reaches the library rather than the system;
-                // the focus effect is off because the cards inside it show focus already.
+                // Focusable so a bare Cmd+V reaches the library rather than the system.
+                // The focus effect stays on: a keyboard user who lands on the container
+                // has to be able to see that the focus is there.
                 .focusable()
-                .focusEffectDisabled()
                 .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
             }
         }

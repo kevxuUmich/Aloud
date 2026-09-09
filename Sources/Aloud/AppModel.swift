@@ -75,7 +75,9 @@ final class AppModel {
     /// The folder a new note lands in: the one that was chosen in Settings while it is
     /// still under a root, and otherwise the first root.
     var noteFolder: URL? {
-        if let p = Defaults.noteFolderPath, roots.contains(where: { p.hasPrefix($0.path) }) {
+        if let p = Defaults.noteFolderPath,
+            roots.contains(where: { Paths.isInside(p, root: $0.path) })
+        {
             return URL(fileURLWithPath: p)
         }
         return roots.first
@@ -134,17 +136,16 @@ final class AppModel {
             return
         }
         Task {
-            do {
-                let added = try Importer.importFiles(urls, into: target)
-                await refresh()
-                if added.isEmpty {
-                    notice = "Nothing to import: Aloud reads .md, .txt and .pdf"
-                } else if added.count == 1, let doc = document(at: added[0]) {
-                    open(doc)
-                }
-            } catch {
-                notice = "Could not import: \(error.localizedDescription)"
+            let result = Importer.importFiles(urls, into: target)
+            await refresh()
+            // A file that could not be copied is reported alongside the ones that were,
+            // rather than costing the caller the whole drop.
+            if !result.failed.isEmpty {
+                notice = "Imported \(result.added.count), could not import \(result.failed.count)"
+            } else if result.added.isEmpty {
+                notice = "Nothing to import: Aloud reads .md, .txt and .pdf"
             }
+            if result.added.count == 1, let doc = document(at: result.added[0]) { open(doc) }
         }
     }
 
