@@ -1,3 +1,4 @@
+import AloudUI
 import AppKit
 import Foundation
 import Observation
@@ -21,6 +22,11 @@ final class AppModel {
     var path: [Route] = []
     var current: Document?
     var notice: String?
+    /// The search field's text. Every edit restarts the debounced search below.
+    var searchQuery = "" { didSet { search() } }
+    /// The ids that match, or nil when the field is empty and the grid is itself.
+    var searchResults: Set<String>?
+    private var searchTask: Task<Void, Never>?
     /// True while the reader's editor has focus, which is what takes the Playback
     /// menu's bare-key shortcuts out of the way of typing.
     var isEditing = false
@@ -209,6 +215,41 @@ final class AppModel {
             }
         }
     }
+
+    private func search() {
+        searchTask?.cancel()
+        let q = searchQuery
+        guard !q.trimmingCharacters(in: .whitespaces).isEmpty else {
+            searchResults = nil
+            return
+        }
+        let docs = allDocuments(in: tree)
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(Int(Motion.searchDebounceMS)))
+            guard !Task.isCancelled else { return }
+            let hits = await Search.matches(q, in: docs)
+            guard !Task.isCancelled else { return }
+            searchResults = hits
+        }
+    }
+
+    func allDocuments(in folders: [Folder]) -> [Document] {
+        folders.flatMap { $0.documents + allDocuments(in: $0.folders) }
+    }
+
+    /// The file goes to the Trash and the library rescans; a document being read is
+    /// paused first, so the player is not left talking about a file that is gone.
+    func trash(_ doc: Document) {
+        do {
+            _ = try Trash.move(doc)
+            if current?.id == doc.id { player.pause() }
+            Task { await refresh() }
+        } catch {
+            notice = "Could not move \(doc.title) to the Trash: \(error.localizedDescription)"
+        }
+    }
+
+    func reveal(_ doc: Document) { NSWorkspace.shared.activateFileViewerSelecting([doc.url]) }
 
     func toggleFinished(_ doc: Document) {
         let p = progress.progress(for: doc.url)

@@ -3,7 +3,7 @@ import SwiftUI
 public struct Gallery: View {
     public static let sections = [
         "GlassBar", "Card", "FolderCard", "IconButton", "TransportButton",
-        "RateButton", "Scrubber", "EmptyState", "Notice",
+        "RateButton", "Scrubber", "EmptyState", "Notice", "ListRow",
     ]
     public init() {}
     public var body: some View {
@@ -51,6 +51,13 @@ public struct Gallery: View {
                 }
                 section("EmptyState") { EmptyState(onPickFolder: {}, onPaste: {}) }
                 section("Notice") { Notice("Voice not available, using the system default") }
+                section("ListRow") {
+                    VStack(alignment: .leading, spacing: Space.none) {
+                        ListRow(title: "Essays", status: "12 documents", symbol: "folder.fill")
+                        ListRow(title: "It's been a fast year.", status: "~8 min", symbol: "doc.fill")
+                        ListRow(title: "Finished one", status: "Finished", symbol: "doc.fill")
+                    }
+                }
             }
             .padding(Space.xxl)
         }

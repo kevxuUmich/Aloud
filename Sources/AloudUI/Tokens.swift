@@ -1,6 +1,8 @@
 import SwiftUI
 
 public enum Space {
+    /// Rows that carry their own vertical padding stack flush.
+    public static let none: CGFloat = 0
     public static let xs: CGFloat = 4
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
@@ -66,4 +68,6 @@ public enum Motion {
     public static let normal: Double = 0.25
     public static let ease = Animation.easeOut(duration: normal)
     public static let quick = Animation.easeOut(duration: fast)
+    /// How long the search field waits after the last keystroke before it reads files.
+    public static let searchDebounceMS: Double = 200
 }
