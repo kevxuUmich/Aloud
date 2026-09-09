@@ -35,6 +35,7 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
             ],
             swiftSettings: strict),
+        .testTarget(name: "AloudTests", dependencies: ["Aloud"], swiftSettings: strict),
         .testTarget(name: "AloudUITests", dependencies: ["AloudUI"], swiftSettings: strict),
         .testTarget(
             name: "ProseTests", dependencies: ["Prose"],

@@ -5,6 +5,13 @@ import Testing
 
 /// The store is swapped for a throwaway suite so the tests never touch the real
 /// preferences, and so one key's default cannot be read from another run's write.
+///
+/// `Defaults.store` is a process-global, and swapping it here swaps it for everything
+/// running in this process, which is why this suite is `.serialized` and why every
+/// case puts the old store back on the way out. It is also why this is the only suite
+/// that swaps it: `.serialized` orders one suite's cases and not two suites against
+/// each other, so a second swapper anywhere in the package would read this one's
+/// throwaway suite, and this one would read theirs.
 @Suite(.serialized) struct DefaultsTests {
     func withSuite(_ body: (UserDefaults) throws -> Void) rethrows {
         let name = "design.aloud.tests.\(UUID().uuidString)"
