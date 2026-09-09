@@ -22,19 +22,26 @@ bundle:
 	@cp $(BIN) $(APP)/Contents/MacOS/Aloud
 	@cp App/Info.plist $(APP)/Contents/Info.plist
 
-# The command-line-tools-only toolchain here ships Testing.framework outside the
+# The command-line-tools-only toolchain ships Testing.framework outside the
 # default framework search path, and its Foundation cross-import overlay has no
 # swiftmodule, so `import Testing` needs these flags to resolve and link.
 # (Baking them into Package.swift via unsafeFlags instead makes SwiftPM fall back to
 # .xctest-bundle test execution, which silently runs zero tests in this sandbox.)
-TESTING_FRAMEWORK := /Library/Developer/CommandLineTools/Library/Developer/Frameworks
+# Xcode's toolchain finds its own Testing.framework, and pointing it at the CLT's
+# copy links against a module from another compiler, so the flags apply only when
+# the command-line tools are the active developer directory.
+CLT := /Library/Developer/CommandLineTools
+TESTING_FRAMEWORK := $(CLT)/Library/Developer/Frameworks
+ifeq ($(shell xcode-select -p),$(CLT))
+TEST_FLAGS := \
+	-Xswiftc -F$(TESTING_FRAMEWORK) \
+	-Xlinker -F$(TESTING_FRAMEWORK) \
+	-Xlinker -rpath -Xlinker $(TESTING_FRAMEWORK) \
+	-Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays
+endif
 
 test:
-	swift test \
-		-Xswiftc -F$(TESTING_FRAMEWORK) \
-		-Xlinker -F$(TESTING_FRAMEWORK) \
-		-Xlinker -rpath -Xlinker $(TESTING_FRAMEWORK) \
-		-Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays
+	swift test $(TEST_FLAGS)
 
 check:
 	swift format lint --strict --recursive Sources Tests Package.swift
