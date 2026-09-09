@@ -71,7 +71,7 @@ Wraps `AVSpeechSynthesizer` and is the only thing that talks to it.
 - Rate maps the UI's `1.0x` to `AVSpeechUtteranceDefaultSpeechRate` and scales from there; the allowed steps are 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3.
 - Voices are grouped by language, current system language first, and each carries a quality tag from `AVSpeechSynthesisVoiceQuality`.
 - Registers with `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, so keyboard media keys, AirPods and the Now Playing widget work.
-- Pauses itself on `AVAudioSession`-equivalent interruptions and when the output device disappears.
+- Pauses itself when the default output device changes or disappears, observed through CoreAudio's default-device property listener; macOS has no `AVAudioSession`.
 
 ### `AloudApp`
 
