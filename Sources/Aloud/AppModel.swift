@@ -31,9 +31,10 @@ final class AppModel {
     private var started = false
 
     var roots: [URL] = []
-    /// The last known path of every root whose bookmark will not resolve, which is what
-    /// Settings names and offers to locate.
-    var unreachable: [String] = []
+    /// Every root whose bookmark will not resolve, which is what Settings names and
+    /// offers to locate or remove. Each is addressed by its index in the store, since a
+    /// migrated placeholder path names nothing.
+    var unreachable: [RootStore.UnreachableRoot] = []
     /// `Defaults.noteFolderPath` mirrored as a stored property, because `noteFolder`
     /// reads it and a view that shows which folder is chosen has to be told when the
     /// choice changes; observation reaches a property, never a `UserDefaults` key.
@@ -170,15 +171,28 @@ final class AppModel {
 
     /// Settings' Locate. The chosen folder takes the unreachable bookmark's place, so
     /// the root keeps its position and everything read under it keeps its progress.
-    func locate(unreachablePath: String) {
+    func locate(_ root: RootStore.UnreachableRoot) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Where is \(URL(fileURLWithPath: unreachablePath).lastPathComponent) now?"
+        panel.message = "Where is \(URL(fileURLWithPath: root.path).lastPathComponent) now?"
         panel.prompt = "Read from this folder"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        rootStore.replace(unreachablePath: unreachablePath, with: url)
+        rootStore.replace(unreachableIndex: root.index, with: url)
+        reloadRoots()
+    }
+
+    /// Settings' Remove on a root that will not resolve. The volume is not coming back,
+    /// or the reader has decided it is not: either way the blob goes.
+    func removeUnreachable(index: Int) {
+        rootStore.remove(unreachableIndex: index)
+        reloadRoots()
+    }
+
+    /// A read of the store is what republishes both lists at once, because removing or
+    /// locating one blob renumbers every unreachable root after it.
+    private func reloadRoots() {
         let loaded = rootStore.load()
         roots = loaded.urls
         unreachable = loaded.unreachable
