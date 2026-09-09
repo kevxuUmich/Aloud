@@ -32,6 +32,10 @@ public enum Size {
     /// Where an auto-scrolled sentence lands: one third down the visible text.
     public static let readerFollowFraction: CGFloat = 1.0 / 3.0
     public static let scrubberTrack: CGFloat = 4
+    /// The voice popover: wide enough for a name, a region and a quality on one line,
+    /// tall enough for a section header and about eight voices under it.
+    public static let popoverWidth: CGFloat = 320
+    public static let popoverHeight: CGFloat = 440
 }
 
 public enum Ink {

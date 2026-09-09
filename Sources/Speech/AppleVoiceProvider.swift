@@ -39,6 +39,17 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         synth.speak(u)
     }
 
+    /// A preview interrupts whatever is being said and speaks for itself. It leaves
+    /// `onWord` and `onFinish` alone: the utterance it cancelled belongs to a `Player`,
+    /// which will speak the sentence again when it is next asked to.
+    public func preview(_ voice: Voice) {
+        synth.stopSpeaking(at: .immediate)
+        let u = AVSpeechUtterance(string: VoicePreview.text)
+        u.rate = Rate.x1.appleRate
+        u.voice = AVSpeechSynthesisVoice(identifier: voice.id)
+        synth.speak(u)
+    }
+
     public func stop() {
         onWord = nil
         onFinish = nil

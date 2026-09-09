@@ -5,6 +5,7 @@ import SwiftUI
 struct TransportBarView: View {
     var model: AppModel
     var player: Player { model.player }
+    @State private var showVoices = false
 
     var body: some View {
         VStack(spacing: Space.s) {
@@ -16,8 +17,8 @@ struct TransportBarView: View {
             HStack {
                 RateButton(
                     label: player.rate.label, all: Rate.allCases.map(\.label),
-                    onCycle: { player.rate = player.rate.next },
-                    onPick: { player.rate = Rate.allCases[$0] })
+                    onCycle: { model.setRate(player.rate.next) },
+                    onPick: { model.setRate(Rate.allCases[$0]) })
                 Spacer()
                 HStack(spacing: Space.xl) {
                     TransportButton(.back15) { player.skip(seconds: -Player.skipSeconds) }
@@ -25,6 +26,11 @@ struct TransportBarView: View {
                     TransportButton(.forward15) { player.skip(seconds: Player.skipSeconds) }
                 }
                 Spacer()
+                IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
+                    .help(player.voice?.name ?? "Voice")
+                    .popover(isPresented: $showVoices, arrowEdge: .top) {
+                        VoicePopover(model: model)
+                    }
                 if model.current != nil, case .reader? = model.path.last {
                     // On the reader, the title is already on screen; show nothing here.
                 } else if let c = model.current {

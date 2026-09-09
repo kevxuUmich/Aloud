@@ -52,7 +52,7 @@ struct AloudApp: App {
                 Button("Forward 15 seconds") { model.player.skip(seconds: Player.skipSeconds) }
                     .keyboardShortcut(.rightArrow, modifiers: [])
                     .disabled(model.isEditing)
-                Button("Faster") { model.player.rate = model.player.rate.next }
+                Button("Faster") { model.setRate(model.player.rate.next) }
                     .keyboardShortcut("]", modifiers: .command)
             }
         }

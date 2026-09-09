@@ -121,4 +121,16 @@ import Testing
         p.play()
         #expect(reported == [0, 1, 1])
     }
+    /// A voice can be removed in System Settings between launches. The player says so
+    /// once and carries on in the system voice rather than falling silent.
+    @Test func missingVoiceFallsBackAndReports() {
+        let (p, fake) = make()
+        var reported: Voice?
+        p.onVoiceUnavailable = { reported = $0 }
+        p.voice = Voice(id: "ghost", name: "Ghost", language: "en-US", quality: .standard)
+        p.play()
+        #expect(reported?.id == "ghost")
+        #expect(fake.spoken.last?.voice?.id == "fake")
+        #expect(p.voice?.id == "fake")
+    }
 }

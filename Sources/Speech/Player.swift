@@ -18,6 +18,9 @@ public final class Player {
 
     public var onSentence: ((Int) -> Void)?
     public var onFinished: (() -> Void)?
+    /// Fired when the chosen voice is no longer installed. The player has already
+    /// fallen back to the system voice by the time this runs.
+    public var onVoiceUnavailable: ((Voice) -> Void)?
 
     private let provider: any VoiceProvider
     private var generation = 0
@@ -95,6 +98,10 @@ public final class Player {
         generation += 1
         let gen = generation
         let sentence = script.sentences[sentenceIndex]
+        if let v = voice, !provider.voices.contains(where: { $0.id == v.id }) {
+            voice = provider.defaultVoice
+            onVoiceUnavailable?(v)
+        }
         provider.speak(
             sentence.text, voice: voice, rate: rate,
             onWord: { [weak self] ns in

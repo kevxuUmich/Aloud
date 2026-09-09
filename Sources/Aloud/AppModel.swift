@@ -11,6 +11,9 @@ import Vault
 final class AppModel {
     let vault: Vault
     let player: Player
+    /// The picker needs the installed set, and it is the same provider the player
+    /// speaks through, so a preview and a sentence never come from two synthesizers.
+    let provider: any VoiceProvider
     let progress: ProgressStore
     let extraction = Extraction()
     private let rootStore = RootStore()
@@ -33,6 +36,7 @@ final class AppModel {
 
     init(provider: any VoiceProvider, progress: ProgressStore = .standard()) {
         self.player = Player(provider: provider)
+        self.provider = provider
         self.progress = progress
         let loaded = rootStore.load()
         self.roots = loaded.urls
@@ -45,11 +49,33 @@ final class AppModel {
                 ? "1 vault folder is no longer reachable"
                 : "\(n) vault folders are no longer reachable"
         }
+        // `Player.init` takes the system voice; the remembered one wins when it is
+        // still installed, and when it is not the system voice is already in place.
+        if let id = Defaults.voiceID, let v = provider.voices.first(where: { $0.id == id }) {
+            player.voice = v
+        }
+        if let f = Defaults.rateFactor, let r = Rate(rawValue: f) { player.rate = r }
+        player.onVoiceUnavailable = { [weak self] v in
+            self?.notice = "\(v.name) is not available, using the system voice"
+        }
         player.onSentence = { [weak self] i in self?.record(index: i, finished: false) }
         player.onFinished = { [weak self] in
             guard let self, self.current != nil else { return }
             self.record(index: self.player.sentenceIndex, finished: true)
         }
+    }
+
+    /// The one writer of `player.voice` after init, so the choice and what is
+    /// remembered can never disagree. It takes at the next sentence.
+    func pickVoice(_ v: Voice) {
+        player.voice = v
+        Defaults.voiceID = v.id
+    }
+
+    /// The one writer of `player.rate` after init, for the same reason.
+    func setRate(_ r: Rate) {
+        player.rate = r
+        Defaults.rateFactor = r.factor
     }
 
     func start() {
