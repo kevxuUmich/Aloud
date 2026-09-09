@@ -90,16 +90,27 @@ final class AppModel {
     /// notice down and no other: a scan that failed and then worked has nothing left to
     /// say, and a notice about a voice or a save is not this method's to clear.
     private var refreshNotice: String?
-    /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
-    /// glyph wiggles on. The window may be closed, so a notice would go unseen.
-    var shakeCount = 0
+    /// The clipboard panel under the menu bar, or nil when there is none. The hotkey
+    /// sets it, the panel's controller shows it, and the three methods below move it.
+    var clipboardPanel: ClipboardPanelState?
+    /// The write Play started, until it lands. A second Play in that time would be a
+    /// second note with the same text.
+    private var previewPlay: Task<Void, Never>?
+    /// The timer that takes an empty panel down again.
+    private var emptyHoldTask: Task<Void, Never>?
+    private let emptyPanelHold: Duration
+    /// What the Now Playing card says under the title for the document that is open:
+    /// the folder's name, or "From clipboard" for a note the panel wrote. Kept so a
+    /// reload pushes the same line.
+    private var currentSubtitle: String?
 
     /// The root store is a parameter so a test can point it at its own defaults suite
     /// rather than at the reader's real vault.
     init(
         provider: any VoiceProvider, progress: ProgressStore = .standard(),
-        rootStore: RootStore = RootStore()
+        rootStore: RootStore = RootStore(), emptyPanelHold: Duration = .seconds(Motion.emptyPanelHold)
     ) {
+        self.emptyPanelHold = emptyPanelHold
         self.rootStore = rootStore
         self.player = Player(provider: provider)
         self.provider = provider
@@ -185,31 +196,67 @@ final class AppModel {
         if let terminateObserver { NotificationCenter.default.removeObserver(terminateObserver) }
     }
 
-    /// The hotkey: whatever text is on the clipboard becomes a note and starts playing,
-    /// window or no window.
-    func pasteAndPlay() {
-        guard let text = Self.clipboardText() else {
-            shakeCount += 1
-            return
-        }
-        pasteNote(text: text, andPlay: true)
+    /// The hotkey: the clipboard is read once and previewed, and nothing is written
+    /// until Play. Read once because a second read a moment later can hand back
+    /// something else.
+    func previewClipboard() {
+        preview(clipboard: NSPasteboard.general.string(forType: .string))
     }
 
-    /// The clipboard as a note would take it: trimmed, and nil when there is nothing
-    /// there. Read once per gesture and passed on, since a second read a moment later
-    /// can hand back something else.
-    private static func clipboardText() -> String? {
-        guard
-            let text = NSPasteboard.general.string(forType: .string)?
-                .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty
+    /// The panel's state from text already in hand, which is what the tests have.
+    /// The same text as the panel already shows changes nothing, so a listener who
+    /// presses the hotkey twice does not lose the player they started. Different text
+    /// swaps the preview and leaves the player alone: the panel is the preview's,
+    /// and the transport bar and the menu-bar item still carry the player.
+    func preview(clipboard text: String?) {
+        emptyHoldTask?.cancel()
+        guard let p = text.flatMap(ClipboardPreview.init(text:)) else {
+            clipboardPanel = .empty
+            emptyHoldTask = Task { [weak self, emptyPanelHold] in
+                try? await Task.sleep(for: emptyPanelHold)
+                guard !Task.isCancelled, let self, self.clipboardPanel == .empty else { return }
+                self.clipboardPanel = nil
+            }
+            return
+        }
+        if clipboardPanel?.preview == p { return }
+        previewPlay?.cancel()
+        previewPlay = nil
+        clipboardPanel = noteFolder == nil ? .needsFolder(p) : .preview(p)
+    }
+
+    /// The panel's Play: the note is written and opened and starts, and the panel
+    /// becomes its player. Nil when there is nothing to play - no preview, no folder,
+    /// or a write already in the air. The task is returned so a test can wait for it.
+    @discardableResult
+    func playPreview() -> Task<Void, Never>? {
+        guard case .preview(let p, _)? = clipboardPanel, previewPlay == nil, let folder = noteFolder
         else { return nil }
-        return text
+        let task = Task {
+            do {
+                try await writeNote(text: p.text, in: folder, andPlay: true)
+                guard !Task.isCancelled, clipboardPanel?.preview == p else { return }
+                clipboardPanel = .playing(p)
+            } catch {
+                guard !Task.isCancelled, clipboardPanel?.preview == p else { return }
+                clipboardPanel = .preview(
+                    p, failure: "Could not save the note: \(error.localizedDescription)")
+            }
+            previewPlay = nil
+        }
+        previewPlay = task
+        return task
+    }
+
+    func dismissClipboardPanel() {
+        emptyHoldTask?.cancel()
+        clipboardPanel = nil
     }
 
     /// Registered once, from `start()`, behind its `started` guard.
     private func installHotkey() {
         KeyboardShortcuts.onKeyUp(for: .pasteAndPlay) { [weak self] in
-            MainActor.assumeIsolated { self?.pasteAndPlay() }
+            MainActor.assumeIsolated { self?.previewClipboard() }
         }
     }
 
@@ -408,9 +455,15 @@ final class AppModel {
     }
 
     func document(at url: URL) -> Document? {
+        // Resolved, not compared as given: a scan's own URLs come back through
+        // `FileManager`, which answers with `/private/var/...` for a path a caller
+        // built as `/var/...`, and a straight `.path` compare would call that a miss.
+        let target = url.resolvingSymlinksInPath().path
         func find(_ folders: [Folder]) -> Document? {
             for f in folders {
-                if let d = f.documents.first(where: { $0.url.path == url.path }) { return d }
+                if let d = f.documents.first(where: { $0.url.resolvingSymlinksInPath().path == target }) {
+                    return d
+                }
                 if let d = find(f.folders) { return d }
             }
             return nil
@@ -419,34 +472,42 @@ final class AppModel {
     }
 
     /// Clipboard text becomes a note in the default folder and opens ready to play.
+    /// The window's Cmd+Shift+V, which writes at once: it is a gesture made inside Aloud.
     func pasteNote(andPlay: Bool = false) {
-        guard let text = Self.clipboardText() else {
+        guard let p = ClipboardPreview(text: NSPasteboard.general.string(forType: .string) ?? "")
+        else {
             notice = "The clipboard has no text"
             return
         }
-        pasteNote(text: text, andPlay: andPlay)
+        pasteNote(text: p.text, andPlay: andPlay)
     }
 
-    /// The same note from text already in hand, which is what the hotkey has: it reads
-    /// the clipboard to know whether there is anything to do at all, and reading it
-    /// again here would be a second answer to the same question.
-    func pasteNote(text: String, andPlay: Bool = false) {
+    /// The same note from text already in hand. The task is returned so a test can
+    /// wait for the write and the load; nil when there is no folder to write into.
+    @discardableResult
+    func pasteNote(text: String, andPlay: Bool = false) -> Task<Void, Never>? {
         guard let folder = noteFolder else {
             notice = "Pick a folder to read from first"
-            return
+            return nil
         }
-        Task {
+        return Task {
             do {
-                let url = try await vault.makeNote(text: text, in: folder)
-                await refresh()
-                if let doc = document(at: url) {
-                    open(doc)
-                    if andPlay { player.play() }
-                }
+                try await writeNote(text: text, in: folder, andPlay: andPlay)
             } catch {
                 notice = "Could not save the note: \(error.localizedDescription)"
             }
         }
+    }
+
+    /// The write the panel and the window share. `play` waits for the load: `open`
+    /// extracts in a task of its own, and a `play()` before it landed was a no-op on an
+    /// empty player and, with another document loaded, a moment of the wrong one.
+    private func writeNote(text: String, in folder: URL, andPlay: Bool) async throws {
+        let url = try await vault.makeNote(text: text, in: folder)
+        await refresh()
+        guard let doc = document(at: url) else { return }
+        await open(doc, subtitle: "From clipboard").value
+        if andPlay, current?.id == doc.id { player.play() }
     }
 
     func importFiles(_ urls: [URL], into folder: URL? = nil) {
@@ -535,19 +596,23 @@ final class AppModel {
     /// Opening the document that is already loaded is navigation, not a load: it must
     /// not re-extract, and above all must not reload the player, which would throw
     /// away where the reader is.
-    func open(_ doc: Document) {
+    ///
+    /// `subtitle` is what the Now Playing card says under the title; nil means the
+    /// folder the document is in. The task is returned so a caller that needs the load
+    /// to have landed, such as a paste that plays, can wait for it.
+    @discardableResult
+    func open(_ doc: Document, subtitle: String? = nil) -> Task<Void, Never> {
         if doc.id == current?.id {
             if path.last != .reader(doc) { path.append(.reader(doc)) }
             // Reopening after the file changed underneath: the route alone would show
             // the reader the text it had when they left it. `followCurrentFile` is the
             // one place that decides, and it decides on the tree's copy rather than on
             // whatever `doc` a card was holding.
-            Task { await followCurrentFile() }
-            return
+            return Task { await followCurrentFile() }
         }
         openGeneration += 1
         let generation = openGeneration
-        Task {
+        return Task {
             do {
                 let kind = SourceKind(doc.type)
                 let script = try await extraction.script(
@@ -555,14 +620,27 @@ final class AppModel {
                 guard generation == openGeneration else { return }
                 let p = progress.progress(for: doc.url)
                 current = doc
+                currentSubtitle = subtitle ?? folderName(of: doc)
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
-                nowPlaying?.update(title: doc.title)
+                nowPlaying?.update(title: doc.title, subtitle: currentSubtitle)
                 if path.last != .reader(doc) { path.append(.reader(doc)) }
             } catch {
                 guard generation == openGeneration else { return }
                 notice = "Could not read \(doc.title): \(error.localizedDescription)"
             }
         }
+    }
+
+    /// The name of the folder that holds a document, for the card's subtitle.
+    private func folderName(of doc: Document) -> String? {
+        func find(_ folders: [Folder]) -> String? {
+            for f in folders {
+                if f.documents.contains(where: { $0.id == doc.id }) { return f.name }
+                if let n = find(f.folders) { return n }
+            }
+            return nil
+        }
+        return find(tree)
     }
 
     /// The file changed under the document being read: a save, a setting that changes
@@ -596,7 +674,7 @@ final class AppModel {
             let at = anchorText.map { ScriptAnchor.index(of: $0, near: anchor, in: script) } ?? anchor
             let wasPlaying = player.isPlaying
             player.load(script, at: at)
-            nowPlaying?.update(title: doc.title)
+            nowPlaying?.update(title: doc.title, subtitle: currentSubtitle)
             if wasPlaying { player.play() }
         } catch {
             notice = "Could not read \(doc.title): \(error.localizedDescription)"
@@ -795,7 +873,11 @@ final class AppModel {
             player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
             // The restored document never passes through `open`, so without this the
             // panel would say "Aloud" over a document the transport can already play.
-            nowPlaying?.update(title: doc.title)
+            // `folderName` reads `tree`, which is usually empty here: `restoreLast` runs
+            // before the first scan lands, so the subtitle is nil until the next open or
+            // reload pushes the card again.
+            currentSubtitle = folderName(of: doc)
+            nowPlaying?.update(title: doc.title, subtitle: currentSubtitle)
         }
     }
 }

@@ -133,10 +133,6 @@ public final class NowPlaying {
         push()
     }
 
-    /// Kept for the app until every caller passes a subtitle; removed in the same
-    /// change that makes them.
-    public func update(title: String?) { update(title: title, subtitle: nil) }
-
     /// Reads the player and writes the centre, and only ever in that direction. The
     /// observation loop below re-runs this whenever the observed state changes, so a
     /// write back into any observed property here would wake the loop that called it
