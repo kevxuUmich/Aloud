@@ -220,21 +220,78 @@ final class AppModel {
     /// paused and the document let go rather than left playing out of a folder the app
     /// no longer has permission to open.
     func removeRoot(_ url: URL) {
-        let name = url.lastPathComponent
-        rootStore.remove(url)
-        roots.removeAll { $0.path == url.path }
-        if let c = current, Paths.isInside(c.url.path, root: url.path) {
-            player.pause()
-            current = nil
-            path.removeAll()
+        let removed = "\(url.lastPathComponent) removed from Aloud. Its files were not touched."
+        // Nothing being read under this root: the order does not matter, so it stays
+        // the synchronous one.
+        guard let c = current, Paths.isInside(c.url.path, root: url.path) else {
+            drop(url)
+            notice = removed
+            Task { await rescan() }
+            return
         }
-        notice = "\(name) removed from Aloud. Its files were not touched."
+        // A document is being read out of the folder that is going. The reader may hold
+        // an unsaved draft, and `rootStore.remove` hands back the scoped access that
+        // draft would be written through, so the order here is the whole point: pause
+        // and pop first, so the reader's `onDisappear` starts its save while the access
+        // is still live; wait for that write; and only then drop the bookmark. Removing
+        // first gave the save a folder the app was no longer allowed to open, and its
+        // failure notice then replaced the removal's - the reader was told the save
+        // failed and never told the folder had gone.
+        player.pause()
+        path.removeAll()
         Task {
-            await vault.setRoots(roots)
-            await refresh()
-            watch()
+            await awaitSaves(for: c.url)
+            drop(url)
+            current = nil
+            await rescan()
+            // Last, so it is the notice that stands: `refresh` posts its own when a
+            // root will not read, and the thing that just happened is the removal.
+            notice = removed
         }
     }
+
+    /// The bookmark and its scoped access, gone. Split out so the two orders above
+    /// cannot drift apart.
+    private func drop(_ url: URL) {
+        rootStore.remove(url)
+        roots.removeAll { $0.path == url.path }
+    }
+
+    private func rescan() async {
+        await vault.setRoots(roots)
+        await refresh()
+        watch()
+    }
+
+    /// Waits out whatever the save funnel is holding for one document, including a save
+    /// that has not reached the funnel yet.
+    ///
+    /// `path.removeAll()` does not tear the reader down on that line: SwiftUI does it
+    /// on a later pass, and the `onDisappear` that calls `saveOnExit` starts a `Task`
+    /// of its own, which is where the funnel entry is finally made. So the wait is in
+    /// two halves - a bounded number of main-actor turns for an entry to appear, then
+    /// the entry itself - rather than one look at a dictionary that is very likely
+    /// still empty.
+    func awaitSaves(for url: URL) async {
+        let key = url.path
+        var turns = 0
+        while saves[key] == nil, turns < Self.saveHandoffTurns {
+            await Task.yield()
+            turns += 1
+        }
+        while let save = saves[key] {
+            _ = await save.task.value
+            // `saveEdit` clears the slot only while it is still the entry it made, and
+            // clearing it here under the same guard is what ends this loop. A newer
+            // save that has taken the slot meanwhile is waited for on the next turn.
+            if saves[key] === save { saves[key] = nil }
+        }
+    }
+
+    /// How many main-actor turns `awaitSaves` gives the reader's teardown to reach the
+    /// funnel. Enough for a render pass and the `Task` that follows it, and small
+    /// enough that a removal with no draft behind it is not a visible wait.
+    private static let saveHandoffTurns = 8
 
     /// Settings' Locate. The chosen folder takes the unreachable bookmark's place, so
     /// the root keeps its position and everything read under it keeps its progress.
