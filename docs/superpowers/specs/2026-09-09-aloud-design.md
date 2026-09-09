@@ -30,9 +30,10 @@ Out, with the seam that admits it later:
 
 ## Architecture
 
-One Swift package with three library targets and one thin app.
+One Swift package with four library targets and one thin app.
 Each library has one purpose and its own test target.
 Every rule about text, timing or geometry lives in a library, so it is tested from the terminal with `swift test` and the app only draws.
+Swift 6 language mode with strict concurrency, so a data race is a compile error rather than a bug report.
 
 ### `Vault`
 
@@ -52,9 +53,15 @@ Turns a file into spoken text.
 
 - `Extractor` is a protocol with one requirement, `func script(from data: Data, type: DocumentType) throws -> Script`.
 - `Script` is an array of `Sentence`, each with its text and its range back in the displayed source, plus the displayed source string itself.
-- `MarkdownExtractor`: strips syntax, headings become their own sentences, list markers are dropped, link text is kept and the URL dropped, emphasis markers are dropped, images are dropped, tables are read row by row with cells separated by commas, fenced and indented code blocks are replaced by the single sentence "Code block." when the skip setting is on and read verbatim when it is off, front matter between `---` fences is dropped.
+- Parsing is not written here.
+Markdown is parsed by Apple's `swift-markdown` (cmark-gfm underneath, Apache-2.0), PDF text comes from the system's PDFKit, and sentences come from the system's `NLTokenizer`.
+What this target owns is only the rules that turn a parse into speech, each a short function over someone else's output.
+- `MarkdownExtractor`: a `MarkupWalker` over the `swift-markdown` tree.
+Headings become their own sentences, list markers are dropped, link text is kept and the URL dropped, emphasis is dropped, images are dropped, tables are read row by row with cells separated by commas, code blocks are replaced by the single sentence "Code block." when the skip setting is on and read verbatim when it is off, front matter between `---` fences is dropped.
 - `PlainTextExtractor`: paragraphs split on blank lines, sentences split by `NLTokenizer`.
-- `PDFExtractor`: text from PDFKit page by page, then a cleanup pass that joins a line ending in a hyphen with the next, drops any line that appears on more than half the pages (running headers and footers), drops bare page numbers, and collapses single line breaks inside a paragraph.
+- `PDFExtractor`: `PDFPage.string` page by page, then a cleanup pass that joins a line ending in a hyphen with the next, drops any line that appears on more than half the pages (running headers and footers), drops bare page numbers, and collapses single line breaks inside a paragraph.
+If PDFKit's reading order proves poor on real documents, `pdf_oxide` (Rust, MIT/Apache, Swift bindings, sub-millisecond per document) is the named replacement behind the same `Extractor` protocol; it is not taken now because it means shipping a prebuilt binary.
+- Extraction runs off the main actor and its result is cached per file, keyed by path and modification date, so reopening a document is instant and the library's thumbnails and estimates are computed once.
 - Sentence splitting uses `NLTokenizer(unit: .sentence)` everywhere, so the three extractors agree on what a sentence is.
 - `estimate(_ script: Script, rate: Float) -> Duration` uses 160 words per minute at rate 1.0, scaled linearly, and is what every "~8 min" label reads.
 - Pure functions, no I/O, the most thoroughly tested target.
@@ -73,14 +80,26 @@ Wraps `AVSpeechSynthesizer` and is the only thing that talks to it.
 - Registers with `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, so keyboard media keys, AirPods and the Now Playing widget work.
 - Pauses itself when the default output device changes or disappears, observed through CoreAudio's default-device property listener; macOS has no `AVAudioSession`.
 
+### `AloudUI`
+
+The design system and the components, and nothing that knows about vaults or speech.
+It is the stylesheet, in Swift.
+
+- `Tokens.swift` is the one file where a number or a colour is written down: the spacing scale (4, 8, 12, 16, 24, 32, 48), the radii, the type ramp as named text styles, semantic colours (`ink`, `inkSoft`, `accent`, `highlightSentence`, `highlightWord`), the glass materials, and the motion durations and curves.
+- `Components/` has one file per component, each a view with a small, typed API and no literals: `GlassBar`, `Card`, `FolderCard`, `IconButton`, `TransportButton`, `RateButton`, `Scrubber`, `VoiceRow`, `EmptyState`, `Notice`.
+- `Modifiers/` has the shared button styles and the highlight style.
+- `Gallery.swift` renders every component in every state on one scrolling page, the storybook.
+The app opens it with `aloud --gallery`, and it is where a component is designed before it is placed.
+- A test greps `AloudUI` and `AloudApp` for literal paddings, sizes, colours and durations outside `Tokens.swift` and fails on any, so the tokens stay the only source.
+
 ### `AloudApp`
 
-SwiftUI, thin.
+SwiftUI, thin, composed from `AloudUI`.
 
 - One `AppModel` owns the `Vault`, one `Player`, the progress store, and the current `Document`.
 - The window scene and the menu-bar scene both read the same `AppModel`, so they can never disagree.
 - Progress store: a JSON file in Application Support keyed by file path, holding `sentenceIndex`, `finished` and `lastPlayed`; it is never written into the user's files.
-- Global hotkey with `RegisterEventHotKey`, which needs no Accessibility permission; default `Ctrl+Option+Space`, changeable.
+- Global hotkey through `KeyboardShortcuts` (sindresorhus, MIT), which wraps `RegisterEventHotKey`, needs no Accessibility permission, and ships the recorder control the Settings window uses; default `Ctrl+Option+Space`.
 - On the hotkey: read `NSPasteboard.general` as string, make a note in the default vault folder, load it, play.
 - If the clipboard has no text, the menu-bar glyph shakes once and nothing else happens.
 
@@ -169,21 +188,57 @@ Vault folders (add, remove, choose the default for new notes), default voice, de
 - `Prose` is the heart of the suite: fixture files for each extractor with expected sentence arrays, the PDF cleanup rules each pinned by a fixture that would fail without them, and the duration estimate at every rate step.
 - `Vault` is tested against a temporary directory: walk, ignore rules, note naming and collision, atomic save, watch-and-republish with a real file write.
 - `Speech` is tested through a fake `VoiceProvider` that records what it was asked to speak, so seek, rate steps, skip-to-boundary and the finished transition are verified without audio.
+- `AloudUI` has the literal-lint test and a smoke test that the gallery builds every component.
 - `AloudApp` has no logic worth testing on its own; anything that grows there moves down into a library.
 - UI is checked by hand at each milestone, per the standing rule that motion and rendering are verified in unit tests where they can be and by eye where they cannot.
 
-## Tooling
+## Dependencies
 
-- One `Package.swift` for the three libraries and their tests; `swift build` and `swift test` work with the command-line tools alone, which is what is installed today.
-- The app target is generated by XcodeGen from `project.yml`, so no hand-maintained `.pbxproj` is checked in.
-- Xcode 26 is needed for signing, the asset catalog and running the `.app`, and is installed when the app target is first built.
+Chosen for being local, fast and small; each one is a thing not worth writing.
+
+| Need | Choice | Why |
+|---|---|---|
+| Markdown parsing | `swift-markdown` (Apple, Apache-2.0) | cmark-gfm in C underneath, spec-complete, a visitor API that makes the speech walker about eighty lines |
+| PDF text | PDFKit (system) | zero dependency; `pdf_oxide` is the named fallback |
+| Sentence splitting | `NaturalLanguage` (system) | language-aware, free |
+| Speech | `AVSpeechSynthesizer` (system) | instant, offline, word timing for free |
+| Global hotkey | `KeyboardShortcuts` (sindresorhus, MIT) | Carbon hotkeys without the Carbon, plus the recorder UI |
+| Project generation | XcodeGen (dev only) | no `.pbxproj` in git |
+| File watching for dev | `watchexec` (brew, dev only) | the rebuild loop |
+
+Looked at and not taken: `SwiftText` (wraps PDFKit, needs Swift 6.3 and the toolchain here is 6.2), `Ink` and `Down` (slower or less complete than `swift-markdown`), `mlx-audio-swift` (MIT, macOS 14+, streaming, thirteen on-device models; it is the obvious first cloud-free implementer of `VoiceProvider` in a later version, not in v1 because it means model downloads in the hundreds of megabytes and a GPU warm-up before the first word).
+
+## Tooling and the dev loop
+
+There is no `npm run dev` in Swift; the closest thing is built here as a `Makefile`.
+
+- `make dev` builds with `swift build`, assembles `.build/Aloud.app` from the binary plus `Info.plist`, and relaunches it.
+Under two seconds for an incremental change.
+- `make watch` runs `make dev` on every save through `watchexec`.
+This is the `npm run dev`.
+- `make gallery` is `make dev` with `--gallery`, opening the component page instead of the library, for design work in isolation.
+- `make test` is `swift test`; `make check` is `swift format lint` plus `swift build`; both are what a commit is gated on.
+- Everything above works with the command-line tools alone, which is what is installed today.
+- Xcode 26 is needed for signing, the asset catalog, SwiftUI previews and shipping the `.app`; `project.yml` is checked in and `xcodegen` produces the project when it is installed.
+Hot reload inside a running app (InjectionNext) is an Xcode-era addition and not part of v1.
 - Sandboxed, with the user-selected-file read-write entitlement and bookmark entitlements.
 - Distribution and pricing are not part of this spec.
 
+## Performance
+
+- `@Observable` models, so a view re-renders only for the properties it read.
+- The library grid is `LazyVGrid`; thumbnails and estimates come from the extraction cache and are rendered once per file version.
+- The reader body is one `Text` built from an `AttributedString`, with the sentence and word highlights applied as attribute runs, never one view per word.
+- Extraction and file walking run on a background actor; the main actor only receives finished values.
+- File watching is debounced so a save that writes twice re-walks once.
+- Speech is per sentence, so the synthesizer holds one utterance at a time and a rate or voice change costs nothing.
+
 ## Milestones
 
-1. `Prose` and `Vault`, tested, no UI.
-2. `Speech` with the fake provider tested, then the Apple provider speaking a fixture from a command-line harness.
-3. App: library and reader with the transport bar, one vault folder, `.md` and `.txt`.
-4. PDF, paste-to-note, drop, search, progress and Finished.
-5. Voice popover, menu-bar player, hotkey, Settings, Now Playing.
+1. `Makefile`, `Package.swift`, an empty app that opens a window, `make watch` proven.
+2. `AloudUI`: tokens, components, gallery, the literal-lint test.
+3. `Prose` and `Vault`, tested, no UI.
+4. `Speech` with the fake provider tested, then the Apple provider speaking a fixture from `aloud --say <file>`.
+5. App: library and reader with the transport bar, one vault folder, `.md` and `.txt`.
+6. PDF, paste-to-note, drop, search, progress and Finished.
+7. Voice popover, menu-bar player, hotkey, Settings, Now Playing.
