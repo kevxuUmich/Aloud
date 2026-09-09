@@ -1,0 +1,38 @@
+name: Aloud
+options:
+  bundleIdPrefix: design.kevxu
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  minimumXcodeGenVersion: 2.38.0
+packages:
+  Aloud:
+    path: .
+targets:
+  Aloud:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Aloud
+    dependencies:
+      - package: Aloud
+        product: AloudUI
+      - package: Aloud
+        product: Prose
+      - package: Aloud
+        product: Vault
+      - package: Aloud
+        product: Speech
+    info:
+      path: App/Info.plist
+    entitlements:
+      path: App/Aloud.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: design.kevxu.aloud
+        PRODUCT_NAME: Aloud
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/Aloud.entitlements
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
