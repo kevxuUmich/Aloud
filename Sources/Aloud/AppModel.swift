@@ -87,6 +87,27 @@ final class AppModel {
         }
     }
 
+    func toggleFinished(_ doc: Document) {
+        let p = progress.progress(for: doc.url)
+        progress.set(
+            Progress(
+                sentenceIndex: p?.sentenceIndex ?? 0, finished: !(p?.finished ?? false),
+                lastPlayed: .now),
+            for: doc.url)
+    }
+
+    func saveEdit(_ text: String, to doc: Document) {
+        Task {
+            do {
+                try await vault.save(text: text, to: doc)
+                await extraction.invalidate(doc.url)
+                open(doc)
+            } catch {
+                notice = "Could not save \(doc.title): \(error.localizedDescription)"
+            }
+        }
+    }
+
     func status(for doc: Document) -> String {
         if let p = progress.progress(for: doc.url) {
             if p.finished { return "Finished" }
