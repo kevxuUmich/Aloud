@@ -64,11 +64,14 @@ struct TransportBarView: View {
     }
 
     /// The title slot: what is loaded, or that nothing is. On the reader the title is
-    /// already on screen above the bar, so the slot is empty there.
+    /// already on screen above the bar, so the slot shows nothing there - but it still
+    /// has to be a view that takes the column's width. An `EmptyView` is laid out as
+    /// nothing at all, the frame around it collapses with it, and the transport then
+    /// sat at the left of the reader's bar instead of at its centre.
     @ViewBuilder var title: some View {
         if let c = model.current {
             if case .reader? = model.path.last {
-                EmptyView()
+                Color.clear
             } else {
                 Button(c.title) { model.open(c) }
                     .font(Type.caption).buttonStyle(.plain).lineLimit(Type.singleLine)
