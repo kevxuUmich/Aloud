@@ -21,6 +21,8 @@ public final class FakeVoiceProvider: VoiceProvider {
         [Voice(id: "fake", name: "Fake", language: "en-US", quality: .standard)]
     }
     public nonisolated var defaultVoice: Voice? { voices.first }
+    /// Nothing is cached, so there is nothing to forget.
+    public nonisolated func refreshVoices() {}
 
     public func speak(
         _ text: String, voice: Voice?, rate: Rate,

@@ -16,11 +16,7 @@ struct LibraryGrid: View {
             alignment: .leading, spacing: Space.xxl
         ) {
             ForEach(roots.isEmpty ? folders : roots) { f in
-                Button {
-                    model.path.append(.folder(f.url))
-                } label: {
-                    FolderCard(name: f.name, count: f.documentCount)
-                }.buttonStyle(.plain)
+                folderCard(f)
             }
             if roots.isEmpty {
                 ForEach(documents) { d in
@@ -35,5 +31,23 @@ struct LibraryGrid: View {
             }
         }
         .padding(Space.xxl)
+    }
+
+    /// A folder's card. A root's card carries the one thing a plain folder cannot be
+    /// asked: drop it. The menu is on the roots alone, so a folder inside a vault has
+    /// no empty right-click of its own.
+    @ViewBuilder func folderCard(_ f: Folder) -> some View {
+        let card = Button {
+            model.path.append(.folder(f.url))
+        } label: {
+            FolderCard(name: f.name, count: f.documentCount)
+        }.buttonStyle(.plain)
+        if roots.isEmpty {
+            card
+        } else {
+            card.contextMenu {
+                Button("Remove from Aloud", role: .destructive) { model.removeRoot(f.url) }
+            }
+        }
     }
 }

@@ -39,6 +39,8 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         }
     }
 
+    public nonisolated func refreshVoices() { cache.invalidate() }
+
     public nonisolated var defaultVoice: Voice? {
         let all = voices
         let lang = AVSpeechSynthesisVoice.currentLanguageCode()

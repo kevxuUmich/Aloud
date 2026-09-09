@@ -3,6 +3,10 @@ import Foundation
 public protocol VoiceProvider: AnyObject, Sendable {
     var voices: [Voice] { get }
     var defaultVoice: Voice? { get }
+    /// Forgets whatever the provider has cached about the installed set, so the next
+    /// read of `voices` asks the system again. A voice downloaded while the app was
+    /// running is otherwise invisible until the app is restarted.
+    func refreshVoices()
     @MainActor func speak(
         _ text: String, voice: Voice?, rate: Rate,
         onWord: @escaping @MainActor (NSRange) -> Void,
