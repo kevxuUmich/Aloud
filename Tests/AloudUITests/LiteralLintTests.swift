@@ -9,7 +9,7 @@ import Testing
         #"\.padding\(\s*\d"#,
         #"\.padding\(\.[a-zA-Z]+,\s*\d"#,
         #"spacing:\s*\d"#,
-        #"(minimum|maximum|width|height|minWidth|maxWidth|minHeight|maxHeight):\s*\d"#,
+        #"(minimum|maximum|minLength|width|height|minWidth|maxWidth|minHeight|maxHeight):\s*\d"#,
         #"cornerRadius:\s*\d"#,
         #"\.font\(\.system\(size"#,
         #"Color\((red|\.sRGB|white|hue)"#,
