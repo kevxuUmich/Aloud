@@ -41,9 +41,9 @@ public enum Size {
     public static let readerFollowFraction: CGFloat = 1.0 / 3.0
     public static let scrubberTrack: CGFloat = 4
     /// The voice popover: wide enough for a name, a region and a quality on one line,
-    /// tall enough for a section header and about eight voices under it.
+    /// tall enough for the search field, a section header and about eight voices.
     public static let popoverWidth: CGFloat = 320
-    public static let popoverHeight: CGFloat = 440
+    public static let popoverHeight: CGFloat = 520
     /// The menu-bar panel: the popover's width, so the two read as one control.
     public static let panelWidth: CGFloat = 320
     /// The Settings window: wide enough for a folder's name, its two buttons and the
