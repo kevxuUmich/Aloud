@@ -13,6 +13,7 @@ final class AppModel {
     let extraction = Extraction()
     private let rootStore = RootStore()
     private var watcher: FolderWatcher?
+    private var openGeneration = 0
 
     var roots: [URL] = []
     var tree: [Folder] = []
@@ -28,9 +29,8 @@ final class AppModel {
         self.vault = Vault(roots: loaded)
         player.onSentence = { [weak self] i in self?.record(index: i, finished: false) }
         player.onFinished = { [weak self] in
-            guard let self, let c = self.current else { return }
+            guard let self, self.current != nil else { return }
             self.record(index: self.player.sentenceIndex, finished: true)
-            _ = c
         }
     }
 
@@ -41,8 +41,7 @@ final class AppModel {
     }
 
     func addRoot(_ url: URL) {
-        rootStore.add(url)
-        roots = rootStore.load()
+        roots = rootStore.add(url)
         Task {
             await vault.setRoots(roots); await refresh(); watch()
         }
@@ -70,15 +69,19 @@ final class AppModel {
     }
 
     func open(_ doc: Document) {
+        openGeneration += 1
+        let generation = openGeneration
         Task {
             do {
                 let kind: SourceKind = doc.type == .markdown ? .markdown : .plainText
                 let script = try await extraction.script(for: doc.url, kind: kind, options: .default)
+                guard generation == openGeneration else { return }
                 let p = progress.progress(for: doc.url)
                 current = doc
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
                 if path.last != .reader(doc) { path.append(.reader(doc)) }
             } catch {
+                guard generation == openGeneration else { return }
                 notice = "Could not read \(doc.title): \(error.localizedDescription)"
             }
         }
@@ -129,16 +132,5 @@ final class AppModel {
             current = doc
             player.load(script, at: progress.progress(for: url)?.sentenceIndex ?? 0)
         }
-    }
-}
-
-enum Format {
-    static func clock(_ d: Duration) -> String {
-        let total = Int(d.components.seconds)
-        return "\(total / 60):" + String(format: "%02d", total % 60)
-    }
-    static func minutes(_ d: Duration) -> String {
-        let m = max(1, Int((Double(d.components.seconds) / 60).rounded()))
-        return m == 1 ? "1 min" : "\(m) min"
     }
 }
