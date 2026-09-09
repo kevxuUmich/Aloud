@@ -35,8 +35,15 @@ targets:
       # product of the local package, so the app's own dependency has to be named here
       # too; without it the Xcode build cannot see `import KeyboardShortcuts`.
       - package: KeyboardShortcuts
+    # The properties are stated here as well as in the file, because xcodegen writes
+    # the file from this block on every generate: a bare `path` wrote an empty dict
+    # over the three the sandbox needs, and the app then could not open a folder.
     entitlements:
       path: App/Aloud.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: design.kevxu.aloud
