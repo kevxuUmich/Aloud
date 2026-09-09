@@ -23,14 +23,20 @@ struct AloudApp: App {
     @AppStorage("showMenuBar") private var showMenuBar = true
 
     @State private var model: AppModel
+    /// The clipboard panel's owner, alive with the window closed: it is not a scene,
+    /// so it is made here beside the model rather than in the body.
+    @State private var clipboardPanel: ClipboardPanelController
 
     init() {
         if let file = Self.sayFile { Task { @MainActor in try? await Self.say(file) } }
-        _model = State(
-            initialValue: MainActor.assumeIsolated {
-                AppModel(
-                    provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
-            })
+        // One model, built into a local and handed to both: reading `_model.wrappedValue`
+        // in the second initialiser would capture a `self` that is not initialised yet.
+        let m = MainActor.assumeIsolated {
+            AppModel(
+                provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
+        }
+        _model = State(initialValue: m)
+        _clipboardPanel = State(initialValue: MainActor.assumeIsolated { ClipboardPanelController(model: m) })
     }
 
     var body: some Scene {

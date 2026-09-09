@@ -184,7 +184,7 @@ final class AppModel {
     func start() {
         guard !started else { return }
         started = true
-        nowPlaying = NowPlaying(player: player)
+        nowPlaying = NowPlaying(player: player, artwork: NowPlayingArtwork.make())
         // `[weak self]` belongs on the outer closure: on the inner `Task` alone, the
         // `@Sendable` closure the watcher holds still captures `self` strongly, and the
         // model owns the watcher, so the pair would never be freed.
