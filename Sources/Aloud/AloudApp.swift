@@ -73,6 +73,9 @@ struct AloudApp: App {
         } label: {
             Image(systemName: "waveform")
                 .symbolEffect(.variableColor.iterative, isActive: model.player.isPlaying)
+                // The hotkey on an empty clipboard: the window may be closed, so the
+                // glyph is the only place the miss can be reported.
+                .symbolEffect(.wiggle, value: model.shakeCount)
                 .opacity(model.current == nil ? Motion.dimmed : 1)
                 .accessibilityLabel("Aloud")
         }

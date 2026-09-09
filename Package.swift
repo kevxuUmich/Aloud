@@ -10,7 +10,12 @@ let package = Package(
         .executable(name: "Aloud", targets: ["Aloud"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
+        // Pinned rather than `from: "2.0.0"`: every tag from 1.16.0 up carries a
+        // `#Preview` in its Recorder, and the `PreviewsMacros` plugin that expands one
+        // ships with Xcode, not with the Command Line Tools this builds against. 1.15.0
+        // is the newest tag that compiles here, and it has the whole API Aloud uses.
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", exact: "1.15.0"),
     ],
     targets: [
         .target(name: "AloudUI", swiftSettings: strict),
@@ -22,7 +27,10 @@ let package = Package(
         .target(name: "Speech", dependencies: ["Prose", "Vault"], swiftSettings: strict),
         .executableTarget(
             name: "Aloud",
-            dependencies: ["AloudUI", "Prose", "Vault", "Speech"],
+            dependencies: [
+                "AloudUI", "Prose", "Vault", "Speech",
+                .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
+            ],
             swiftSettings: strict),
         .testTarget(name: "AloudUITests", dependencies: ["AloudUI"], swiftSettings: strict),
         .testTarget(

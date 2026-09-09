@@ -1,6 +1,7 @@
 import AloudUI
 import AppKit
 import Foundation
+import KeyboardShortcuts
 import Observation
 import Prose
 import Speech
@@ -41,6 +42,9 @@ final class AppModel {
     /// True while the reader's editor has focus, which is what takes the Playback
     /// menu's bare-key shortcuts out of the way of typing.
     var isEditing = false
+    /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
+    /// glyph wiggles on. The window may be closed, so a notice would go unseen.
+    var shakeCount = 0
 
     init(provider: any VoiceProvider, progress: ProgressStore = .standard()) {
         self.player = Player(provider: provider)
@@ -101,6 +105,7 @@ final class AppModel {
                 self.notice = "Paused: the output device changed"
             }
         }
+        installHotkey()
         Task { await refresh() }
         watch()
         Task { await restoreLast() }
@@ -108,6 +113,27 @@ final class AppModel {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [progress] _ in progress.flush() }
+    }
+
+    /// The hotkey: whatever text is on the clipboard becomes a note and starts playing,
+    /// window or no window.
+    func pasteAndPlay() {
+        guard
+            let text = NSPasteboard.general.string(forType: .string)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
+        else {
+            shakeCount += 1
+            return
+        }
+        pasteNote(andPlay: true)
+    }
+
+    /// Registered once, from `start()`, behind its `started` guard.
+    private func installHotkey() {
+        KeyboardShortcuts.onKeyUp(for: .pasteAndPlay) { [weak self] in
+            MainActor.assumeIsolated { self?.pasteAndPlay() }
+        }
     }
 
     func addRoot(_ url: URL) {
