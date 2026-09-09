@@ -27,31 +27,38 @@ struct ReaderView: View {
     var body: some View {
         HStack {
             Spacer(minLength: .zero)
-            ReaderTextView(
-                text: editing ? draft : player.script.source,
-                fontSize: Type.readerSizes[stepIndex],
-                sentence: isCurrent
-                    ? nsRange(player.script.sentences[safe: player.sentenceIndex]?.range) : nil,
-                word: isCurrent ? nsRange(player.wordRange) : nil,
-                follow: follow && player.isPlaying,
-                editable: editing,
-                onClick: { offset in
-                    guard let i = player.script.sentenceIndex(atUTF16Offset: offset) else { return }
-                    follow = true
-                    player.seek(to: i)
-                    if !player.isPlaying { player.play() }
-                },
-                onEdit: {
-                    draft = $0
-                    model.isDirty = true
-                },
-                // A blur while the editor is still open is a save. `save()` itself
-                // takes the editor out of edit mode, which ends editing a second time,
-                // so the state it has already left is what guards against the loop.
-                onBlur: { if editing, model.isDirty { save() } },
-                onUserScroll: { follow = false }
-            )
-            .frame(maxWidth: Size.readerFrame)
+            if showsEmptyBody {
+                Text(emptyBodyMessage)
+                    .font(Type.landingBody)
+                    .foregroundStyle(Ink.soft)
+                    .padding(Space.xxl)
+            } else {
+                ReaderTextView(
+                    text: editing ? draft : player.script.source,
+                    fontSize: Type.readerSizes[stepIndex],
+                    sentence: isCurrent
+                        ? nsRange(player.script.sentences[safe: player.sentenceIndex]?.range) : nil,
+                    word: isCurrent ? nsRange(player.wordRange) : nil,
+                    follow: follow && player.isPlaying,
+                    editable: editing,
+                    onClick: { offset in
+                        guard let i = player.script.sentenceIndex(atUTF16Offset: offset) else { return }
+                        follow = true
+                        player.seek(to: i)
+                        if !player.isPlaying { player.play() }
+                    },
+                    onEdit: {
+                        draft = $0
+                        model.isDirty = true
+                    },
+                    // A blur while the editor is still open is a save. `save()` itself
+                    // takes the editor out of edit mode, which ends editing a second time,
+                    // so the state it has already left is what guards against the loop.
+                    onBlur: { if editing, model.isDirty { save() } },
+                    onUserScroll: { follow = false }
+                )
+                .frame(maxWidth: Size.readerFrame)
+            }
             Spacer(minLength: .zero)
         }
         .navigationTitle(document.title)
@@ -93,6 +100,15 @@ struct ReaderView: View {
             guard !editing, !model.path.isEmpty else { return }
             model.path.removeLast()
         }
+    }
+
+    /// A script with nothing in it: an image-only or encrypted PDF, which is the case
+    /// the spec names, and any file that is empty. A blank page reads as a page still
+    /// loading, so the reader says which it is. Never while editing, where an empty
+    /// draft is the thing being typed into.
+    var showsEmptyBody: Bool { !editing && player.script.sentences.isEmpty }
+    var emptyBodyMessage: String {
+        document.type == .pdf ? "This PDF has no text to read" : "Nothing to read here"
     }
 
     /// Distinct per state, so the button never announces an action it will not perform.

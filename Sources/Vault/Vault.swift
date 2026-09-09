@@ -6,6 +6,10 @@ public enum VaultError: Error, Equatable {
 
 public actor Vault {
     public private(set) var roots: [URL]
+    /// How many edits this vault has written. The rule that a blur and the Done click
+    /// that follows it write once is invisible from outside without it: the file ends
+    /// up holding the same text either way.
+    public private(set) var writes = 0
     public init(roots: [URL]) { self.roots = roots }
 
     public func setRoots(_ urls: [URL]) { roots = urls }
@@ -30,5 +34,6 @@ public actor Vault {
     public func save(text: String, to document: Document) throws {
         guard document.type != .pdf else { throw VaultError.notEditable(document.type) }
         try text.write(to: document.url, atomically: true, encoding: .utf8)
+        writes += 1
     }
 }

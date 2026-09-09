@@ -86,6 +86,8 @@ public enum Type {
     public static let readerLineHeightMultiple: CGFloat = 1.45
     /// The menu-bar panel's sentence, truncated so the panel keeps its height.
     public static let panelSentenceLines = 3
+    /// One line and no more: a list row's title, the panel's title, the transport's.
+    public static let singleLine = 1
 }
 
 public enum Motion {

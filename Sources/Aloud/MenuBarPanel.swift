@@ -12,7 +12,7 @@ struct MenuBarPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            Text(model.current?.title ?? "Nothing loaded").font(Type.cardTitle).lineLimit(1)
+            Text(model.current?.title ?? "Nothing loaded").font(Type.cardTitle).lineLimit(Type.singleLine)
             Text(
                 model.currentSentenceText
                     ?? "Pick a document in Aloud, or press the hotkey with text on the clipboard."

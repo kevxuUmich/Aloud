@@ -12,7 +12,7 @@ public struct ListRow: View {
     public var body: some View {
         HStack(spacing: Space.m) {
             Image(systemName: symbol).foregroundStyle(Ink.soft).accessibilityHidden(true)
-            Text(title).font(Type.cardTitle).lineLimit(1)
+            Text(title).font(Type.cardTitle).lineLimit(Type.singleLine)
             Spacer()
             Text(status).font(Type.caption).foregroundStyle(Ink.soft)
         }

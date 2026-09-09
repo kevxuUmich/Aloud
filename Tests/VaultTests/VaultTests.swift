@@ -24,6 +24,7 @@ import Testing
         let doc = try await vault.tree()[0].documents[0]
         try await vault.save(text: "v2", to: doc)
         #expect(try String(contentsOf: url, encoding: .utf8) == "v2")
+        #expect(await vault.writes == 1)
     }
     @Test func refusesToSavePDF() async throws {
         let root = try tempRoot()

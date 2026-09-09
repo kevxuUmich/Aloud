@@ -18,16 +18,18 @@ final class AppModel {
     let provider: any VoiceProvider
     let progress: ProgressStore
     let extraction = Extraction()
-    private let rootStore = RootStore()
+    private let rootStore: RootStore
     private var watcher: FolderWatcher?
     /// The system's Now Playing panel and the media keys, and the pause that follows
     /// the headphones out of the jack. Both are started by `start()`.
     private var nowPlaying: NowPlaying?
     private var deviceWatcher: OutputDeviceWatcher?
     private var openGeneration = 0
-    /// `start()` is called from the scene body, which runs again for a second window.
-    /// Everything below it is process-wide - one Now Playing, one device listener, one
-    /// terminate observer - so it must happen once however many times it is asked for.
+    /// `start()` runs from the root view's `.task`, which runs again every time that
+    /// view appears: closing the one window and reopening it from the menu bar is
+    /// enough. Everything below it is process-wide - one Now Playing, one device
+    /// listener, one terminate observer - so it must happen once however many times it
+    /// is asked for.
     private var started = false
     /// The block-based observer `start()` registers. The centre holds it until it is
     /// removed by hand, so the token is kept for `deinit` to hand back.
@@ -82,13 +84,23 @@ final class AppModel {
     var pendingDraft: (url: URL, text: String)?
     /// The write in the air for each document, and what the last write that landed put
     /// there. Together they are what makes `saveEdit` one save at a time per file.
-    private var saves: [String: Task<Bool, Never>] = [:]
+    private var saves: [String: Save] = [:]
     private var lastSavedText: [String: String] = [:]
+    /// The notice a failed `refresh` last put up. A refresh that succeeds takes its own
+    /// notice down and no other: a scan that failed and then worked has nothing left to
+    /// say, and a notice about a voice or a save is not this method's to clear.
+    private var refreshNotice: String?
     /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
     /// glyph wiggles on. The window may be closed, so a notice would go unseen.
     var shakeCount = 0
 
-    init(provider: any VoiceProvider, progress: ProgressStore = .standard()) {
+    /// The root store is a parameter so a test can point it at its own defaults suite
+    /// rather than at the reader's real vault.
+    init(
+        provider: any VoiceProvider, progress: ProgressStore = .standard(),
+        rootStore: RootStore = RootStore()
+    ) {
+        self.rootStore = rootStore
         self.player = Player(provider: provider)
         self.provider = provider
         self.progress = progress
@@ -165,15 +177,22 @@ final class AppModel {
     /// The hotkey: whatever text is on the clipboard becomes a note and starts playing,
     /// window or no window.
     func pasteAndPlay() {
-        guard
-            let text = NSPasteboard.general.string(forType: .string)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !text.isEmpty
-        else {
+        guard let text = Self.clipboardText() else {
             shakeCount += 1
             return
         }
-        pasteNote(andPlay: true)
+        pasteNote(text: text, andPlay: true)
+    }
+
+    /// The clipboard as a note would take it: trimmed, and nil when there is nothing
+    /// there. Read once per gesture and passed on, since a second read a moment later
+    /// can hand back something else.
+    private static func clipboardText() -> String? {
+        guard
+            let text = NSPasteboard.general.string(forType: .string)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty
+        else { return nil }
+        return text
     }
 
     /// Registered once, from `start()`, behind its `started` guard.
@@ -265,7 +284,11 @@ final class AppModel {
     /// under the editor would throw the draft away.
     func reloadCurrent() {
         guard let doc = current, !isEditing else { return }
-        Task { await reload(doc) }
+        // Anchored like every other reload: skipping code blocks adds and removes
+        // sentences in the middle of a document, so the index the reader is standing
+        // on names a different line in the script that comes back.
+        let anchorText = currentSentenceText
+        Task { await reload(doc, anchorText: anchorText) }
     }
 
     func pickRootFolder() {
@@ -315,14 +338,17 @@ final class AppModel {
 
     /// Clipboard text becomes a note in the default folder and opens ready to play.
     func pasteNote(andPlay: Bool = false) {
-        guard
-            let text = NSPasteboard.general.string(forType: .string)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !text.isEmpty
-        else {
+        guard let text = Self.clipboardText() else {
             notice = "The clipboard has no text"
             return
         }
+        pasteNote(text: text, andPlay: andPlay)
+    }
+
+    /// The same note from text already in hand, which is what the hotkey has: it reads
+    /// the clipboard to know whether there is anything to do at all, and reading it
+    /// again here would be a second answer to the same question.
+    func pasteNote(text: String, andPlay: Bool = false) {
         guard let folder = noteFolder else {
             notice = "Pick a folder to read from first"
             return
@@ -385,15 +411,25 @@ final class AppModel {
     /// the follow run under the editor: the draft there is the text that was just
     /// written, so re-extracting cannot lose it. Every other caller leaves it alone.
     func refresh(afterOwnSave: Bool = false) async {
+        var failure: String?
         do {
             tree = try await vault.tree()
             let names = unreadableNames(in: tree)
             if !names.isEmpty {
-                notice = "Could not read: " + names.joined(separator: ", ")
+                failure = "Could not read: " + names.joined(separator: ", ")
             }
         } catch {
-            notice = "Could not read a vault folder: \(error.localizedDescription)"
+            failure = "Could not read a vault folder: \(error.localizedDescription)"
         }
+        // A folder that was unplugged and is back, or a file that was locked and is
+        // not: the notice this method put up is this method's to take down, and it is
+        // taken down only while it is still the one on screen.
+        if let failure {
+            notice = failure
+        } else if let last = refreshNotice, notice == last {
+            notice = nil
+        }
+        refreshNotice = failure
         // A scan that failed is still a scan: the library has an answer to show, even
         // when the answer is a notice, and the first-scan spinner has to give way to it.
         scanned = true
@@ -456,11 +492,13 @@ final class AppModel {
     /// from progress, because the reader is standing in this document right now and
     /// the store is only debounced.
     ///
-    /// `anchorText` is the sentence that was being read when the file changed. Given
-    /// one, its place is found again in the fresh script rather than trusted: an insert
-    /// above the reader moves every sentence below it, and the old number would land on
-    /// the wrong line. Without one - a setting change, which rewrites the same source -
-    /// the index already names the same place.
+    /// `anchorText` is the sentence that was being read when the file changed, and
+    /// every caller has one to hand: its place is found again in the fresh script
+    /// rather than trusted, because an insert above the reader moves every sentence
+    /// below it and the old number would land on the wrong line. A setting change is no
+    /// exception - skipping code blocks adds and removes sentences in the middle of a
+    /// document as surely as an edit does. Without an anchor the index is taken as it
+    /// stands, which is only right where the script cannot have moved at all.
     ///
     /// A load stops the synthesizer, so playback is taken and handed back around it;
     /// otherwise a file changed mid-sentence would leave the reader silent with no
@@ -538,15 +576,32 @@ final class AppModel {
     @discardableResult
     func saveEdit(_ text: String, to doc: Document) async -> Bool {
         let key = doc.url.path
-        if let inFlight = saves[key] {
-            let landed = await inFlight.value
-            if landed, lastSavedText[key] == text { return true }
+        // The place in the queue is taken here, synchronously, and the write waits on
+        // the one in front of it rather than on whatever is in the slot when it wakes.
+        // Waking and looking again is not the same thing: a task's waiters are not
+        // woken in the order they began to wait, so of three saves of one file the
+        // second and third could swap and the older text be the one left on disk.
+        let previous = saves[key]
+        let save = Save()
+        saves[key] = save
+        save.task = Task { [weak self] in
+            let landed = await previous?.task.value ?? true
+            guard let self else { return false }
+            // The write in front put this very text on disk - a blur and the Done click
+            // that follows it - so there is nothing left to write.
+            if landed, self.lastSavedText[key] == text { return true }
+            return await self.write(text, to: doc)
         }
-        let task = Task { await write(text, to: doc) }
-        saves[key] = task
-        let landed = await task.value
-        if saves[key] == task { saves[key] = nil }
+        let landed = await save.task.value
+        if saves[key] === save { saves[key] = nil }
         return landed
+    }
+
+    /// A write in the air, held by reference so the funnel can ask whether the queue's
+    /// tail is still the entry it made; a `Task` has no identity to compare. The task
+    /// is set a line after the box is made, because it waits on the box in front of it.
+    private final class Save {
+        var task: Task<Bool, Never>!
     }
 
     /// The write itself, only ever reached through `saveEdit`.
@@ -632,10 +687,16 @@ final class AppModel {
         guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url)
         else { return }
         let kind = SourceKind(type)
+        // The file's own date, not this moment: `followCurrentFile` decides whether the
+        // document has changed by comparing this against the tree's copy, and `.now` is
+        // never what the scanner reads, so the first refresh after launch reloaded the
+        // restored document and started its sentence again out loud.
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let modified = (attributes?[.modificationDate] as? Date) ?? .distantPast
         if let script = try? await extraction.script(for: url, kind: kind, options: extractOptions) {
             let doc = Document(
                 url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),
-                preview: "", modified: .now, bytes: 0, type: type)
+                preview: "", modified: modified, bytes: 0, type: type)
             current = doc
             // The same rule open() uses: a finished document starts again at the top.
             let p = progress.progress(for: url)

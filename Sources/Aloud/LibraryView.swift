@@ -78,13 +78,16 @@ struct LibraryView: View {
                     .padding(Space.xxl)
             } else {
                 ScrollView { contents }
-                    // Focusable so a bare Cmd+V reaches the library rather than the system.
-                    // The focus effect stays on: a keyboard user who lands on the container
-                    // has to be able to see that the focus is there.
-                    .focusable()
-                    .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
             }
         }
+        // Focusable so a bare Cmd+V reaches the library rather than the system, and on
+        // the outside of the Group so it reaches the landing too: an empty vault is
+        // exactly where pasting a note is the thing to do, and the paste bound to the
+        // grid alone was a command that worked everywhere except where it was offered.
+        // The focus effect stays on: a keyboard user who lands on the container has to
+        // be able to see that the focus is there.
+        .focusable()
+        .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
         .navigationTitle(title)
         .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "Search")
         .toolbar {

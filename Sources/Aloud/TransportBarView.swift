@@ -63,7 +63,7 @@ struct TransportBarView: View {
                 EmptyView()
             } else {
                 Button(c.title) { model.open(c) }
-                    .font(Type.caption).buttonStyle(.plain).lineLimit(1)
+                    .font(Type.caption).buttonStyle(.plain).lineLimit(Type.singleLine)
             }
         } else {
             Text("Nothing loaded").font(Type.caption).foregroundStyle(Ink.soft)
