@@ -36,7 +36,10 @@ public final class Player {
 
     public func load(_ script: Script, at index: Int) {
         if isPlaying {
+            // Stopping the synthesizer without dropping the flag stranded playback:
+            // the transport read as playing and nothing was being spoken.
             stopSpeaking()
+            isPlaying = false
         } else {
             generation += 1
         }
@@ -48,16 +51,15 @@ public final class Player {
     }
 
     public func play() {
-        guard !script.sentences.isEmpty else {
-            finished = true
-            onFinished?()
-            return
-        }
+        // A second press while speaking would queue a duplicate utterance.
+        guard !isPlaying else { return }
+        // An empty file is not a file that has been read, so it is not finished.
+        guard !script.sentences.isEmpty else { return }
         if finished {
             sentenceIndex = 0
             finished = false
         }
-        if !isPlaying { onSentence?(sentenceIndex) }
+        onSentence?(sentenceIndex)
         isPlaying = true
         speakCurrent()
     }

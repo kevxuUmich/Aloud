@@ -19,7 +19,7 @@ let package = Package(
             dependencies: [.product(name: "Markdown", package: "swift-markdown")],
             swiftSettings: strict),
         .target(name: "Vault", dependencies: ["Prose"], swiftSettings: strict),
-        .target(name: "Speech", dependencies: ["Prose"], swiftSettings: strict),
+        .target(name: "Speech", dependencies: ["Prose", "Vault"], swiftSettings: strict),
         .executableTarget(
             name: "Aloud",
             dependencies: ["AloudUI", "Prose", "Vault", "Speech"],
@@ -29,6 +29,6 @@ let package = Package(
             name: "ProseTests", dependencies: ["Prose"],
             resources: [.copy("Fixtures")], swiftSettings: strict),
         .testTarget(name: "VaultTests", dependencies: ["Vault"], swiftSettings: strict),
-        .testTarget(name: "SpeechTests", dependencies: ["Speech"], swiftSettings: strict),
+        .testTarget(name: "SpeechTests", dependencies: ["Speech", "Vault"], swiftSettings: strict),
     ]
 )

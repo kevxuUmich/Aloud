@@ -1,3 +1,4 @@
+import AVFoundation
 import Testing
 
 @testable import Speech
@@ -14,6 +15,10 @@ import Testing
         #expect(Rate.x3.appleRate == 1.0)
         #expect(Rate.x075.appleRate == 0.375)
         #expect(Rate.x2.appleRate == 0.75)
+    }
+    /// The spec's mapping, stated against the constant rather than against 0.5.
+    @Test func oneXIsTheSystemDefaultRate() {
+        #expect(Rate.x1.appleRate == AVSpeechUtteranceDefaultSpeechRate)
     }
     @Test func eightSteps() { #expect(Rate.allCases.count == 8) }
     @Test func labelsAreLocaleIndependent() {

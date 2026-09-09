@@ -70,16 +70,37 @@ import Testing
         p.seek(progress: 0.9)
         #expect(p.sentenceIndex == 3)
     }
-    @Test func playOnEmptyScriptFinishesImmediately() {
+    /// An empty file has not been read, so play on one does nothing at all: marking it
+    /// finished would put "Finished" under a card nobody has heard a word of.
+    @Test func playOnAnEmptyScriptDoesNothing() {
         let fake = FakeVoiceProvider()
         let p = Player(provider: fake)
         var done = false
         p.onFinished = { done = true }
         p.play()
-        #expect(done)
-        #expect(p.finished)
+        #expect(!done)
+        #expect(!p.finished)
         #expect(!p.isPlaying)
         #expect(fake.spoken.isEmpty)
+    }
+    @Test func loadWhilePlayingStopsCleanly() {
+        let (p, fake) = make()
+        p.play()
+        let next = "Alpha beta gamma. Delta epsilon zeta."
+        p.load(Script(source: next, sentences: SentenceSplitter.split(next)), at: 0)
+        #expect(!p.isPlaying)
+        #expect(p.wordRange == nil)
+        #expect(fake.stops == 1)
+        #expect(p.sentenceIndex == 0)
+        p.play()
+        #expect(fake.spoken.last?.text == "Alpha beta gamma.")
+        #expect(p.isPlaying)
+    }
+    @Test func playWhilePlayingDoesNotSpeakTwice() {
+        let (p, fake) = make()
+        p.play()
+        p.play()
+        #expect(fake.spoken.count == 1)
     }
     @Test func playReportsTheStartingSentence() {
         let (p, _) = make()
