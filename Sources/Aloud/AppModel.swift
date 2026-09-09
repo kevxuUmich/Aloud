@@ -18,6 +18,10 @@ final class AppModel {
     let extraction = Extraction()
     private let rootStore = RootStore()
     private var watcher: FolderWatcher?
+    /// The system's Now Playing panel and the media keys, and the pause that follows
+    /// the headphones out of the jack. Both are started by `start()`.
+    private var nowPlaying: NowPlaying?
+    private var deviceWatcher: OutputDeviceWatcher?
     private var openGeneration = 0
 
     var roots: [URL] = []
@@ -79,6 +83,15 @@ final class AppModel {
     }
 
     func start() {
+        nowPlaying = NowPlaying(player: player)
+        deviceWatcher = OutputDeviceWatcher {
+            // CoreAudio calls this on its own queue, so the hop is the listener's job.
+            Task { @MainActor [weak self] in
+                guard self?.player.isPlaying == true else { return }
+                self?.player.pause()
+                self?.notice = "Paused: the output device changed"
+            }
+        }
         Task { await refresh() }
         watch()
         Task { await restoreLast() }
@@ -234,6 +247,7 @@ final class AppModel {
                 let p = progress.progress(for: doc.url)
                 current = doc
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
+                nowPlaying?.update(title: doc.title)
                 if path.last != .reader(doc) { path.append(.reader(doc)) }
             } catch {
                 guard generation == openGeneration else { return }
@@ -353,6 +367,9 @@ final class AppModel {
             // The same rule open() uses: a finished document starts again at the top.
             let p = progress.progress(for: url)
             player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
+            // The restored document never passes through `open`, so without this the
+            // panel would say "Aloud" over a document the transport can already play.
+            nowPlaying?.update(title: doc.title)
         }
     }
 }

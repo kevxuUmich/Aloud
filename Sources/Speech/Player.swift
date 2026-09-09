@@ -4,7 +4,9 @@ import Prose
 
 @Observable @MainActor
 public final class Player {
-    public static let skipSeconds: Double = 15
+    /// Nonisolated because it is a constant, and the media-key bindings read it from
+    /// outside the main actor to set the transport's skip interval.
+    public nonisolated static let skipSeconds: Double = 15
 
     public private(set) var script: Script = .empty
     public private(set) var sentenceIndex = 0

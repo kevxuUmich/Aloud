@@ -10,6 +10,13 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     private let cache = VoiceCache()
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
+    /// The utterance the callbacks above belong to. A cancel arrives on a later turn
+    /// than the `stopSpeaking` that caused it, by which time a new `speak` may have
+    /// installed its own callbacks; clearing on a stale one wiped them and playback
+    /// stalled with nothing to report it. Identity is the whole guard, and the
+    /// reference is held rather than just its `ObjectIdentifier` so a freed
+    /// utterance's address cannot be reused under the comparison.
+    private var current: AVSpeechUtterance?
 
     public override init() {
         super.init()
@@ -48,6 +55,7 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         if let id = voice?.id { u.voice = AVSpeechSynthesisVoice(identifier: id) }
         self.onWord = onWord
         self.onFinish = onFinish
+        current = u
         synth.speak(u)
     }
 
@@ -64,12 +72,14 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         let u = AVSpeechUtterance(string: VoicePreview.text)
         u.rate = Rate.x1.appleRate
         u.voice = AVSpeechSynthesisVoice(identifier: voice.id)
+        current = u
         synth.speak(u)
     }
 
     public func stop() {
         onWord = nil
         onFinish = nil
+        current = nil
         synth.stopSpeaking(at: .immediate)
     }
 
@@ -82,7 +92,10 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     public nonisolated func speechSynthesizer(
         _ s: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance
     ) {
+        let id = ObjectIdentifier(utterance)
         Task { @MainActor in
+            guard id == self.current.map(ObjectIdentifier.init) else { return }
+            self.current = nil
             self.onFinish = nil
             self.onWord = nil
         }
@@ -91,7 +104,10 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     public nonisolated func speechSynthesizer(
         _ s: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance
     ) {
+        let id = ObjectIdentifier(utterance)
         Task { @MainActor in
+            guard id == self.current.map(ObjectIdentifier.init) else { return }
+            self.current = nil
             let f = self.onFinish
             self.onFinish = nil
             self.onWord = nil
