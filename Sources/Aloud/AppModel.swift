@@ -9,6 +9,20 @@ import Speech
 import UniformTypeIdentifiers
 import Vault
 
+/// What can go wrong after a note's write lands on disk but before it is readable as
+/// the document it just became: `writeNote`'s two checks past the write itself. Both
+/// read as sentences, since they land on the panel's failure text and the window's
+/// notice unchanged.
+enum NoteWriteError: LocalizedError {
+    case notFound, notOpened
+    var errorDescription: String? {
+        switch self {
+        case .notFound: "the note was written but could not be found"
+        case .notOpened: "the note could not be opened"
+        }
+    }
+}
+
 @Observable @MainActor
 final class AppModel {
     let vault: Vault
@@ -216,6 +230,7 @@ final class AppModel {
                 try? await Task.sleep(for: emptyPanelHold)
                 guard !Task.isCancelled, let self, self.clipboardPanel == .empty else { return }
                 self.clipboardPanel = nil
+                self.emptyHoldTask = nil
             }
             return
         }
@@ -235,6 +250,9 @@ final class AppModel {
         let task = Task {
             do {
                 try await writeNote(text: p.text, in: folder, andPlay: true)
+                // A stale task must never clear a live one: whichever of these guards
+                // fires belongs to a Play that is no longer the panel's, so it returns
+                // before `previewPlay = nil` below, leaving the live task's own slot alone.
                 guard !Task.isCancelled, clipboardPanel?.preview == p else { return }
                 clipboardPanel = .playing(p)
             } catch {
@@ -455,20 +473,21 @@ final class AppModel {
     }
 
     func document(at url: URL) -> Document? {
-        // Resolved, not compared as given: a scan's own URLs come back through
-        // `FileManager`, which answers with `/private/var/...` for a path a caller
-        // built as `/var/...`, and a straight `.path` compare would call that a miss.
-        let target = url.resolvingSymlinksInPath().path
-        func find(_ folders: [Folder]) -> Document? {
+        func find(_ folders: [Folder], _ matches: (URL) -> Bool) -> Document? {
             for f in folders {
-                if let d = f.documents.first(where: { $0.url.resolvingSymlinksInPath().path == target }) {
-                    return d
-                }
-                if let d = find(f.folders) { return d }
+                if let d = f.documents.first(where: { matches($0.url) }) { return d }
+                if let d = find(f.folders, matches) { return d }
             }
             return nil
         }
-        return find(tree)
+        // The common case first, at the cost it always had: a straight `.path` compare.
+        // Only on a miss is the slower fallback tried, resolving both sides - a scan's
+        // own URLs come back through `FileManager`, which answers with
+        // `/private/var/...` for a path a caller built as `/var/...`, and a straight
+        // compare would call that a miss too.
+        if let d = find(tree, { $0.path == url.path }) { return d }
+        let target = url.resolvingSymlinksInPath().path
+        return find(tree, { $0.resolvingSymlinksInPath().path == target })
     }
 
     /// Clipboard text becomes a note in the default folder and opens ready to play.
@@ -502,12 +521,19 @@ final class AppModel {
     /// The write the panel and the window share. `play` waits for the load: `open`
     /// extracts in a task of its own, and a `play()` before it landed was a no-op on an
     /// empty player and, with another document loaded, a moment of the wrong one.
+    ///
+    /// A miss on either step below is thrown rather than shrugged off: a caller that
+    /// swallowed it would take the success branch over a note that never opened, and
+    /// the panel would show a mini player over nothing.
     private func writeNote(text: String, in folder: URL, andPlay: Bool) async throws {
         let url = try await vault.makeNote(text: text, in: folder)
         await refresh()
-        guard let doc = document(at: url) else { return }
+        guard let doc = document(at: url) else { throw NoteWriteError.notFound }
         await open(doc, subtitle: "From clipboard").value
-        if andPlay, current?.id == doc.id { player.play() }
+        if andPlay {
+            guard current?.id == doc.id else { throw NoteWriteError.notOpened }
+            player.play()
+        }
     }
 
     func importFiles(_ urls: [URL], into folder: URL? = nil) {

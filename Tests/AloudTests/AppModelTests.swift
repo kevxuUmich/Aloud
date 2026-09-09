@@ -184,7 +184,7 @@ import Vault
             let play = try #require(model.playPreview())
             await play.value
             let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            #expect(files == ["Hello there..md"] || files == ["Hello there.md"])
+            #expect(files == ["Hello there.md"])
             #expect(model.current?.title == "Hello there.")
             #expect(model.player.isPlaying)
             #expect(
