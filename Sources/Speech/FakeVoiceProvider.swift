@@ -8,6 +8,7 @@ public final class FakeVoiceProvider: VoiceProvider {
         public let text: String
         public let rate: Rate
         public let voice: Voice?
+        public let pause: Duration
     }
     public private(set) var spoken: [Request] = []
     public private(set) var stops = 0
@@ -25,10 +26,10 @@ public final class FakeVoiceProvider: VoiceProvider {
     public nonisolated func refreshVoices() {}
 
     public func speak(
-        _ text: String, voice: Voice?, rate: Rate,
+        _ text: String, voice: Voice?, rate: Rate, pause: Duration,
         onWord: @escaping @MainActor (NSRange) -> Void, onFinish: @escaping @MainActor () -> Void
     ) {
-        spoken.append(Request(text: text, rate: rate, voice: voice))
+        spoken.append(Request(text: text, rate: rate, voice: voice, pause: pause))
         self.onWord = onWord
         self.onFinish = onFinish
     }

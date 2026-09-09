@@ -49,11 +49,12 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     }
 
     public func speak(
-        _ text: String, voice: Voice?, rate: Rate,
+        _ text: String, voice: Voice?, rate: Rate, pause: Duration,
         onWord: @escaping @MainActor (NSRange) -> Void, onFinish: @escaping @MainActor () -> Void
     ) {
         let u = AVSpeechUtterance(string: text)
         u.rate = rate.appleRate
+        u.postUtteranceDelay = pause.seconds
         if let id = voice?.id { u.voice = AVSpeechSynthesisVoice(identifier: id) }
         self.onWord = onWord
         self.onFinish = onFinish

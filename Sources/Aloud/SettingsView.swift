@@ -78,6 +78,17 @@ struct SettingsView: View {
             Section("Reading") {
                 Toggle("Skip code blocks in Markdown", isOn: $skipCode)
             }
+            // A beat is a beat at any speed, so these are seconds and not a share of
+            // the sentence; the paragraph's stands in for the sentence's where a
+            // paragraph ends, rather than adding to it.
+            Section("Pauses") {
+                Stepper(
+                    "After a sentence: \(Pauses.label(model.player.pauses.sentence))",
+                    value: pauseBinding(\.sentence), in: Pauses.range, step: Pauses.step)
+                Stepper(
+                    "After a line break: \(Pauses.label(model.player.pauses.paragraph))",
+                    value: pauseBinding(\.paragraph), in: Pauses.range, step: Pauses.step)
+            }
             Section("Hotkey") {
                 KeyboardShortcuts.Recorder("Paste and play:", name: .pasteAndPlay)
             }
@@ -95,5 +106,16 @@ struct SettingsView: View {
         // has to be extracted again; the cache is keyed by the options, so it misses of
         // its own accord and nothing needs invalidating.
         .onChange(of: skipCode) { model.reloadCurrent() }
+    }
+
+    /// One pause as seconds, written back through the model's single writer.
+    private func pauseBinding(_ key: WritableKeyPath<Pauses, Duration>) -> Binding<Double> {
+        Binding(
+            get: { model.player.pauses[keyPath: key].seconds },
+            set: { seconds in
+                var p = model.player.pauses
+                p[keyPath: key] = .seconds(seconds)
+                model.setPauses(p)
+            })
     }
 }

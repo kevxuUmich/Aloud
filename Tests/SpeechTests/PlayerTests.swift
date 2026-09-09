@@ -5,9 +5,13 @@ import Testing
 @testable import Speech
 
 @Suite @MainActor struct PlayerTests {
+    /// The fixture speaks with no pauses, so a sentence's slot is its words alone and
+    /// the clock arithmetic below reads straight off the word count. The pause test
+    /// builds its own.
     func make() -> (Player, FakeVoiceProvider) {
         let fake = FakeVoiceProvider()
         let p = Player(provider: fake)
+        p.pauses = .none
         let source = "One two three. Four five six. Seven eight nine. Ten eleven twelve."
         p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
         return (p, fake)
@@ -103,6 +107,24 @@ import Testing
         #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
         #expect(abs(p.progress - 0.25 / 2.25) < 0.001)
     }
+    /// Each utterance carries the silence to leave after it: the sentence pause, or
+    /// the paragraph pause where the sentence ends a paragraph. A change reaches the
+    /// next sentence without restarting the one in the air.
+    @Test func eachSentenceCarriesItsPause() {
+        let fake = FakeVoiceProvider()
+        let p = Player(provider: fake)
+        let source = "One two three.\n\nFour five six. Seven eight nine."
+        p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+        p.play()
+        #expect(fake.spoken.last?.pause == Pauses.standard.paragraph)
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.pause == Pauses.standard.sentence)
+        p.pauses = Pauses(sentence: .seconds(1), paragraph: .seconds(2))
+        #expect(fake.spoken.count == 2)
+        #expect(p.timeline.duration(at: 1) == .seconds(1.125) + .seconds(1))
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.pause == .seconds(1))
+    }
     @Test func seekWhilePlayingRestartsAtTheTarget() {
         let (p, fake) = make()
         p.play(); p.seek(to: 2)
@@ -112,7 +134,8 @@ import Testing
     }
     @Test func skipLandsOnASentenceBoundary() {
         let (p, _) = make()
-        // each 3-word sentence is 1.125 s at 1x; 15 s forward from 0 clamps to the last sentence
+        // each 3-word sentence is 1.125 s at 1x, plus its pause; 15 s forward from 0
+        // clamps to the last sentence
         p.skip(seconds: 15)
         #expect(p.sentenceIndex == 3)
         p.skip(seconds: -15)

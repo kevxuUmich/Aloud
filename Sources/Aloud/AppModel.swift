@@ -122,6 +122,10 @@ final class AppModel {
             player.voice = v
         }
         if let f = Defaults.rateFactor, let r = Rate(rawValue: f) { player.rate = r }
+        var pauses = Pauses.standard
+        if let s = Defaults.sentencePause { pauses.sentence = .seconds(s) }
+        if let p = Defaults.paragraphPause { pauses.paragraph = .seconds(p) }
+        player.pauses = pauses
         player.onVoiceUnavailable = { [weak self] v in
             self?.notice = "\(v.name) is not available, using the system voice"
         }
@@ -143,6 +147,13 @@ final class AppModel {
     func setRate(_ r: Rate) {
         player.rate = r
         Defaults.rateFactor = r.factor
+    }
+
+    /// The one writer of `player.pauses` after init, likewise.
+    func setPauses(_ p: Pauses) {
+        player.pauses = p
+        Defaults.sentencePause = p.sentence.seconds
+        Defaults.paragraphPause = p.paragraph.seconds
     }
 
     func start() {

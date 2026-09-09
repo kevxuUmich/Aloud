@@ -22,12 +22,17 @@ public final class Player {
     /// half spoken at 1x is still half spoken at 2x.
     public var rate: Rate = .x1 {
         didSet {
-            timeline = Timeline(script: script, rate: rate)
+            timeline = Timeline(script: script, rate: rate, pauses: pauses)
             sentenceOffset = sentenceOffset * oldValue.factor / rate.factor
             guard isPlaying else { return }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }
+    }
+    /// The silences between sentences. A change is heard from the next sentence: the
+    /// one in the air keeps the pause it was queued with, which is a beat at most.
+    public var pauses: Pauses = .standard {
+        didSet { timeline = Timeline(script: script, rate: rate, pauses: pauses) }
     }
     /// Assignment is where availability is settled, so a sentence never pays for the
     /// check and a voice that has gone is reported once rather than once a sentence.
@@ -59,7 +64,7 @@ public final class Player {
     public init(provider: any VoiceProvider) {
         self.provider = provider
         self.voice = provider.defaultVoice
-        self.timeline = Timeline(script: .empty, rate: .x1)
+        self.timeline = Timeline(script: .empty, rate: .x1, pauses: .standard)
     }
 
     public var elapsed: Duration { timeline.elapsed(at: sentenceIndex) + sentenceOffset }
@@ -78,7 +83,7 @@ public final class Player {
             generation += 1
         }
         self.script = script
-        timeline = Timeline(script: script, rate: rate)
+        timeline = Timeline(script: script, rate: rate, pauses: pauses)
         sentenceIndex = min(max(index, 0), max(script.sentences.count - 1, 0))
         finished = false
         wordRange = nil
@@ -165,8 +170,9 @@ public final class Player {
         sentenceOffset = offset
         sentenceAnchor = .now - offset
         startTicking()
+        let pause = script.endsParagraph(at: sentenceIndex) ? pauses.paragraph : pauses.sentence
         provider.speak(
-            spoken, voice: voice, rate: rate,
+            spoken, voice: voice, rate: rate, pause: pause,
             onWord: { [weak self] ns in
                 guard let self, gen == self.generation else { return }
                 if let r = Range(ns, in: spoken) {

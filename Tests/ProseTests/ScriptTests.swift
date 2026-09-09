@@ -4,6 +4,19 @@ import Testing
 @testable import Prose
 
 @Suite struct ScriptTests {
+    /// A sentence ends a paragraph when a line break stands between it and the next;
+    /// the last sentence ends nothing, since nothing follows it.
+    @Test func endsParagraphWhereALineBreakFollows() {
+        let source = "One two. Three four.\n\nFive six.\nSeven eight."
+        let script = Script(source: source, sentences: SentenceSplitter.split(source))
+        #expect(script.sentences.count == 4)
+        #expect(script.endsParagraph(at: 0) == false)
+        #expect(script.endsParagraph(at: 1) == true)
+        #expect(script.endsParagraph(at: 2) == true)
+        #expect(script.endsParagraph(at: 3) == false)
+        #expect(script.endsParagraph(at: 9) == false)
+    }
+
     static let fixture = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().appendingPathComponent("Fixtures/essay.md")
 
