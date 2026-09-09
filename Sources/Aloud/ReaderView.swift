@@ -11,6 +11,12 @@ struct ReaderView: View {
     @State private var follow = true
     @State private var editing = false
     @State private var draft = ""
+    /// One write at a time: a blur and the Done button can both ask, and two saves in
+    /// the air would race over `editing` and over the file.
+    @State private var saving = false
+    /// True while the source is being read for the editor, which is what keeps a
+    /// second click on Edit from starting a second read.
+    @State private var loadingDraft = false
 
     var player: Player { model.player }
     var isCurrent: Bool { model.current?.id == document.id }
@@ -62,7 +68,7 @@ struct ReaderView: View {
                 IconButton(editing ? "checkmark" : "pencil", label: editButtonLabel) {
                     toggleEdit()
                 }
-                .disabled(document.type == .pdf)
+                .disabled(document.type == .pdf || loadingDraft)
                 .help(editButtonLabel)
                 IconButton("bookmark", label: "Mark finished") { model.toggleFinished(document) }
             }
@@ -73,10 +79,13 @@ struct ReaderView: View {
         .onChange(of: model.saveRequested) { _, _ in if editing { save() } }
         // The navigation bar's back button is the one way out that neither the
         // transport nor Escape guards, so the way out writes the draft first.
+        // The navigation bar's back button is the one way out that neither the
+        // transport nor Escape guards, so the way out writes the draft first. The
+        // view is going away, so the model finishes the write and keeps the text if
+        // it fails; `isDirty` is cleared only by a save that landed.
         .onDisappear {
-            if model.isDirty { save() }
+            if editing, model.isDirty { model.saveOnExit(draft, for: document) }
             model.isEditing = false
-            model.isDirty = false
         }
         // Escape goes back to the library. While editing it does nothing, so it can
         // never be the gesture that silently discards a draft.
@@ -100,30 +109,54 @@ struct ReaderView: View {
     func toggleEdit() {
         if editing {
             save()
-        } else {
-            player.pause()
-            // The file, not the prose the player reads: a Markdown source extracted
-            // and written back would come home with its formatting flattened out.
-            // Edit mode only opens once the source is in hand, so a file that cannot
-            // be read leaves the reader reading rather than editing an empty draft.
-            Task {
-                do {
-                    draft = try await model.vault.rawText(of: document)
-                    model.isDirty = false
-                    editing = true
-                } catch {
-                    model.notice =
-                        "Could not open \(document.title) for editing: \(error.localizedDescription)"
-                }
-            }
+            return
         }
+        guard !loadingDraft else { return }
+        player.pause()
+        // A draft whose save failed on the way out comes back rather than the file,
+        // which is older than it.
+        if let pending = model.pendingDraft, pending.url == document.url {
+            draft = pending.text
+            model.pendingDraft = nil
+            model.isDirty = true
+            editing = true
+            return
+        }
+        // The file, not the prose the player reads: a Markdown source extracted and
+        // written back would come home with its formatting flattened out. Edit mode
+        // only opens once the source is in hand, so a file that cannot be read
+        // leaves the reader reading rather than editing an empty draft.
+        loadingDraft = true
+        Task {
+            do {
+                draft = try await model.vault.rawText(of: document)
+                model.isDirty = false
+                editing = true
+            } catch {
+                model.notice = "Could not open \(document.title) for editing: \(reason(error))"
+            }
+            loadingDraft = false
+        }
+    }
+
+    /// A decode failure names itself, since "the file could not be opened" says
+    /// nothing about a file the reader can see the app reading aloud.
+    func reason(_ error: Error) -> String {
+        guard let code = (error as? CocoaError)?.code,
+            code == .fileReadInapplicableStringEncoding || code == .fileReadCorruptFile
+        else { return error.localizedDescription }
+        return "the file is not UTF-8 text"
     }
 
     /// The one write. The button stays in its editing state until the write lands, so
     /// a failed save leaves the draft on screen with the notice over it.
     func save() {
+        guard !saving else { return }
+        saving = true
         Task {
-            if await model.saveEdit(draft, to: document) {
+            let saved = await model.saveEdit(draft, to: document)
+            saving = false
+            if saved {
                 editing = false
                 model.isDirty = false
             }

@@ -60,6 +60,9 @@ final class AppModel {
     /// Bumped by the Save command. The reader observes it rather than the menu
     /// reaching into the view, which has the draft and nothing else does.
     var saveRequested = 0
+    /// A draft whose save failed on the way out of the reader. The view it belonged
+    /// to is gone, so the model holds the text until that document is edited again.
+    var pendingDraft: (url: URL, text: String)?
     /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
     /// glyph wiggles on. The window may be closed, so a notice would go unseen.
     var shakeCount = 0
@@ -382,6 +385,10 @@ final class AppModel {
                 let script = try await extraction.script(
                     for: doc.url, kind: kind, options: extractOptions)
                 guard generation == openGeneration else { return }
+                // A reload refreshes the document on screen. If the reader has moved
+                // on while the write and the re-extraction were in the air, this is a
+                // stale reload and must not take `current` or the player back.
+                if reloading, current?.id != doc.id { return }
                 let p = progress.progress(for: doc.url)
                 current = doc
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
@@ -448,11 +455,30 @@ final class AppModel {
         do {
             try await vault.save(text: text, to: doc)
             await extraction.invalidate(doc.url)
-            open(doc, reloading: true)
+            // Only the document still being read is reloaded. A save on the way out
+            // of a reader the user has already left behind would otherwise pull
+            // `current` and the player back to it; the folder watcher picks the
+            // change up when they return.
+            if current?.id == doc.id { open(doc, reloading: true) }
             return true
         } catch {
             notice = "Could not save \(doc.title): \(error.localizedDescription)"
             return false
+        }
+    }
+
+    /// The save the reader cannot wait for, because the view is going away. A failure
+    /// here has nowhere to put the notice and no editor left to hold the text, so the
+    /// draft is kept on the model until that document is opened for editing again.
+    func saveOnExit(_ text: String, for doc: Document) {
+        Task {
+            if await saveEdit(text, to: doc) {
+                isDirty = false
+                pendingDraft = nil
+            } else {
+                pendingDraft = (doc.url, text)
+                notice = "Could not save \(doc.title); your draft is kept until you reopen it"
+            }
         }
     }
 
