@@ -84,6 +84,11 @@ public enum Type {
     /// status off the bottom of the cell.
     public static let cardTitleLines = 2
     public static let readerLineHeightMultiple: CGFloat = 1.45
+    /// The gap between two paragraphs, as a share of the reader's font size. The
+    /// source keeps a blank line between paragraphs, and that line is drawn at this
+    /// height rather than a line of prose's: at the prose's own height, plus the
+    /// paragraph spacing that used to sit either side of it, the gap read as two lines.
+    public static let readerParagraphGap: CGFloat = 0.75
     /// The menu-bar panel's sentence, truncated so the panel keeps its height.
     public static let panelSentenceLines = 3
     /// One line and no more: a list row's title, the panel's title, the transport's.
