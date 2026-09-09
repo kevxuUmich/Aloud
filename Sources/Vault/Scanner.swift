@@ -71,7 +71,10 @@ public enum Scanner {
     static func trimmingPartialScalar(_ data: Data) -> Data {
         var end = data.endIndex
         var continuations = 0
-        while end > data.startIndex, continuations < 3 {
+        // A lead byte can be preceded by three continuations, so the walk needs a
+        // fourth pass to reach it; stopping at three lost the lead byte of every
+        // complete four-byte scalar that ended exactly at the ceiling.
+        while end > data.startIndex, continuations < 4 {
             let byte = data[data.index(before: end)]
             if byte & 0xC0 == 0x80 {
                 continuations += 1

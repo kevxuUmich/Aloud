@@ -37,7 +37,9 @@ struct RootView: View {
         }
         // A notice can arrive while the reader is elsewhere on screen, so it is spoken
         // rather than only drawn.
-        .onChange(of: model.notice) { _, now in
+        // `initial: true`, because a notice set in the model's init - unreachable vault
+        // roots - is already there when the view first appears and would never change.
+        .onChange(of: model.notice, initial: true) { _, now in
             guard let now else { return }
             NSAccessibility.post(
                 element: NSApp.mainWindow ?? NSApp as Any, notification: .announcementRequested,

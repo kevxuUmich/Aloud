@@ -75,13 +75,15 @@ public final class RootStore {
         }
         defaults.set(keep, forKey: Self.key)
         url.stopAccessingSecurityScopedResource()
-        accessing.remove(url.path)
+        accessing.remove(Self.key(url))
         resolved.removeAll { Self.key($0) == Self.key(url) }
     }
 
     private func startAccessing(_ url: URL) {
-        guard !accessing.contains(url.path) else { return }
+        // Keyed the same way identity is, or the same folder reached by two spellings
+        // takes two scoped accesses and gives back one.
+        guard !accessing.contains(Self.key(url)) else { return }
         _ = url.startAccessingSecurityScopedResource()
-        accessing.insert(url.path)
+        accessing.insert(Self.key(url))
     }
 }

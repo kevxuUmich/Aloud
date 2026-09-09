@@ -85,4 +85,29 @@ import Testing
         #expect(head.hasSuffix("\u{e9}"))
         #expect(head.count == 1 + (Scanner.previewBytes * 4 - 1) / 2)
     }
+
+    @Test func headTextKeepsAFourByteScalarThatEndsAtTheCeiling() throws {
+        let root = try makeEmptyRoot()
+        // 600 four-byte characters is exactly the read ceiling, so the last byte read
+        // is the last byte of a complete scalar and none of it may be trimmed.
+        let text = String(repeating: "\u{1f600}", count: 700)
+        let file = root.appendingPathComponent("emoji.md")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        let head = Scanner.headText(of: file)
+        #expect(!head.contains("\u{fffd}"))
+        #expect(head.hasSuffix("\u{1f600}"))
+        #expect(head.count == Scanner.previewBytes * 4 / 4)
+    }
+
+    @Test func headTextTrimsAPartialFourByteScalar() throws {
+        let root = try makeEmptyRoot()
+        // One byte of offset, so the ceiling lands three bytes into the last character.
+        let text = "a" + String(repeating: "\u{1f600}", count: 700)
+        let file = root.appendingPathComponent("emoji-cut.md")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        let head = Scanner.headText(of: file)
+        #expect(!head.contains("\u{fffd}"))
+        #expect(head.hasSuffix("\u{1f600}"))
+        #expect(head.count == 1 + (Scanner.previewBytes * 4 - 1) / 4)
+    }
 }

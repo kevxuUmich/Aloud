@@ -23,8 +23,6 @@ targets:
         product: Vault
       - package: Aloud
         product: Speech
-    info:
-      path: App/Info.plist
     entitlements:
       path: App/Aloud.entitlements
     settings:
@@ -33,6 +31,7 @@ targets:
         PRODUCT_NAME: Aloud
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: App/Aloud.entitlements
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
