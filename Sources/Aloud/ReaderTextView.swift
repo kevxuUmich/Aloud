@@ -15,6 +15,7 @@ struct ReaderTextView: NSViewRepresentable {
     var editable: Bool
     var onClick: (Int) -> Void
     var onEdit: (String) -> Void
+    var onBlur: () -> Void
     var onUserScroll: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -145,6 +146,9 @@ struct ReaderTextView: NSViewRepresentable {
             guard let tv = n.object as? NSTextView else { return }
             parent.onEdit(tv.string)
         }
+        /// The editor losing first responder: a click elsewhere, another window coming
+        /// forward. The draft is written rather than left hanging on a button press.
+        func textDidEndEditing(_ n: Notification) { parent.onBlur() }
     }
 }
 

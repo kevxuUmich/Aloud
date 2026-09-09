@@ -54,6 +54,12 @@ final class AppModel {
     /// True while the reader's editor has focus, which is what takes the Playback
     /// menu's bare-key shortcuts out of the way of typing.
     var isEditing = false
+    /// True while the editor holds text that is not on disk yet. It is what makes a
+    /// blur, Cmd+S and leaving the reader each write, so no path out drops a draft.
+    var isDirty = false
+    /// Bumped by the Save command. The reader observes it rather than the menu
+    /// reaching into the view, which has the draft and nothing else does.
+    var saveRequested = 0
     /// Bumped when the hotkey finds an empty clipboard, which is what the menu bar's
     /// glyph wiggles on. The window may be closed, so a notice would go unseen.
     var shakeCount = 0
@@ -380,7 +386,10 @@ final class AppModel {
                 current = doc
                 player.load(script, at: p?.finished == true ? 0 : (p?.sentenceIndex ?? 0))
                 nowPlaying?.update(title: doc.title)
-                if path.last != .reader(doc) { path.append(.reader(doc)) }
+                // A reload is not navigation: it refreshes the script under whatever
+                // is on screen. Pushing here would send a reader who has just left the
+                // document, saving on the way out, straight back into it.
+                if !reloading, path.last != .reader(doc) { path.append(.reader(doc)) }
             } catch {
                 guard generation == openGeneration else { return }
                 notice = "Could not read \(doc.title): \(error.localizedDescription)"

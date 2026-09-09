@@ -45,6 +45,13 @@ struct AloudApp: App {
             // watcher are all process-wide, and a second window would be a second
             // library looking at the same player.
             CommandGroup(replacing: .newItem) {}
+            // Cmd+S while the editor is open. The reader owns the draft, so the
+            // command asks for a save rather than performing one.
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") { model.saveRequested += 1 }
+                    .keyboardShortcut("s")
+                    .disabled(!model.isEditing)
+            }
             CommandGroup(after: .pasteboard) {
                 Button("New Note from Clipboard") { model.pasteNote() }
                     .keyboardShortcut("v", modifiers: [.command, .shift])

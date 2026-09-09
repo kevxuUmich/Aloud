@@ -19,6 +19,14 @@ public actor Vault {
         return url
     }
 
+    /// The file as it sits on disk, which is what the editor shows and writes back.
+    /// Extraction is for reading aloud; a Markdown source edited as its own prose
+    /// would come back with its formatting flattened out.
+    public func rawText(of document: Document) throws -> String {
+        guard document.type != .pdf else { throw VaultError.notEditable(document.type) }
+        return try String(contentsOf: document.url, encoding: .utf8)
+    }
+
     public func save(text: String, to document: Document) throws {
         guard document.type != .pdf else { throw VaultError.notEditable(document.type) }
         try text.write(to: document.url, atomically: true, encoding: .utf8)
