@@ -128,6 +128,7 @@ A grid of the current folder.
 - Cmd+V with no text field focused creates a note from the clipboard and opens it.
 - Cmd+Shift+V does the same from anywhere in the app, since bare Cmd+V reaches the library only when it has focus.
 - Right-click on a card: Play, Mark finished, Reveal in Finder, Delete (moves to Trash).
+- A vault folder is removed from the `+` menu while it is on screen, or by right-clicking its card at the top level, and only the link goes: its files are not touched.
 - The empty landing fills the window: the waveform glyph, "Aloud", one sentence, the two buttons "Choose a folder" and "Paste from clipboard", and a hint that files can be dropped anywhere in the window and that the hotkey reads the clipboard from any app.
 - A vault that has been added but holds nothing readable shows the same landing with "Import files" in place of "Choose a folder".
 - The transport bar is there behind both landings, since it is the app's one transport and a control that appears only once something is loaded is a control nobody learns.
@@ -157,6 +158,7 @@ It is always present, from first launch onward; with nothing loaded the scrubber
 - Row two, left: the rate button showing `1x`; click cycles the steps, right-click shows them all.
 - Row two, centre: back 15 s, play/pause, forward 15 s.
 - Row two, right: the voice button, showing the voice name, opening the voice popover.
+- The row is three columns: the title at the left, the transport at the true centre, the speed and the voice at the right, so the cluster stays centred however long the title is.
 - In the library the bar also shows the playing title, and clicking it opens the reader.
 - Space toggles play/pause anywhere a text field is not focused; left and right arrows skip 15 s.
 
@@ -166,6 +168,9 @@ It is always present, from first launch onward; with nothing loaded the scrubber
 - Each row: a preview button that speaks one fixed sentence in that voice, the name, the region, and the quality tag.
 - Picking a voice takes effect at the next sentence.
 - "Get more voices" opens System Settings at Accessibility, Spoken Content, since only the system can install voices.
+- A search field at the top filters by voice name, language, region and quality.
+- The installed set is read again every time the popover opens, so a voice downloaded while Aloud is running appears without a restart.
+- The popover says that Siri voices are not available to apps, since that is the first thing a reader looks for and the one thing that can never be in the list.
 
 ### Menu-bar item
 

@@ -209,12 +209,26 @@ final class AppModel {
         }
     }
 
-    /// Settings' Remove. The bookmark goes, its scoped access with it, and the library
-    /// is rebuilt from what is left rather than filtered, so a document under two roots
-    /// survives losing one of them.
+    /// Settings' Remove, and the library's. The bookmark goes, its scoped access with
+    /// it, and the library is rebuilt from what is left rather than filtered, so a
+    /// document under two roots survives losing one of them.
+    ///
+    /// Nothing on disk is touched, which is the whole of what the notice says: a
+    /// destructive-looking menu item that only drops a link has to say that it only
+    /// drops a link. What does go is the reading of a document under that root: the
+    /// scoped access it was read through has just been handed back, so the player is
+    /// paused and the document let go rather than left playing out of a folder the app
+    /// no longer has permission to open.
     func removeRoot(_ url: URL) {
+        let name = url.lastPathComponent
         rootStore.remove(url)
         roots.removeAll { $0.path == url.path }
+        if let c = current, Paths.isInside(c.url.path, root: url.path) {
+            player.pause()
+            current = nil
+            path.removeAll()
+        }
+        notice = "\(name) removed from Aloud. Its files were not touched."
         Task {
             await vault.setRoots(roots)
             await refresh()

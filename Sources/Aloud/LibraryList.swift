@@ -12,12 +12,7 @@ struct LibraryList: View {
     var body: some View {
         LazyVStack(alignment: .leading, spacing: Space.none) {
             ForEach(roots.isEmpty ? folders : roots) { f in
-                Button {
-                    model.path.append(.folder(f.url))
-                } label: {
-                    ListRow(
-                        title: f.name, status: folderStatus(f), symbol: "folder.fill")
-                }.buttonStyle(.plain)
+                folderRow(f)
             }
             if roots.isEmpty {
                 ForEach(documents) { d in
@@ -32,6 +27,23 @@ struct LibraryList: View {
             }
         }
         .padding(Space.xxl)
+    }
+
+    /// The same menu the grid's root cards carry, for the same reason: a root can be
+    /// dropped and a folder inside a vault cannot.
+    @ViewBuilder func folderRow(_ f: Folder) -> some View {
+        let row = Button {
+            model.path.append(.folder(f.url))
+        } label: {
+            ListRow(title: f.name, status: folderStatus(f), symbol: "folder.fill")
+        }.buttonStyle(.plain)
+        if roots.isEmpty {
+            row
+        } else {
+            row.contextMenu {
+                Button("Remove from Aloud", role: .destructive) { model.removeRoot(f.url) }
+            }
+        }
     }
 
     /// The same words FolderCard uses, so a folder reads alike in either view.
