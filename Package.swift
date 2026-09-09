@@ -7,7 +7,15 @@ let package = Package(
     name: "Aloud",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "Aloud", targets: ["Aloud"])
+        .executable(name: "Aloud", targets: ["Aloud"]),
+        // The four modules as products, for the Xcode target: `project.yml` compiles
+        // `Sources/Aloud` itself and reaches these by product name, and a target that
+        // is not a product is invisible to it - "Missing package product 'AloudUI'".
+        // `swift build` never needed them, which is how they came to be missing.
+        .library(name: "AloudUI", targets: ["AloudUI"]),
+        .library(name: "Prose", targets: ["Prose"]),
+        .library(name: "Vault", targets: ["Vault"]),
+        .library(name: "Speech", targets: ["Speech"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
