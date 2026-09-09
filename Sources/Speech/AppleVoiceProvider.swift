@@ -7,9 +7,9 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
 
-    public override nonisolated init() {
+    public override init() {
         super.init()
-        Task { @MainActor in self.synth.delegate = self }
+        synth.delegate = self
     }
 
     public nonisolated var voices: [Voice] {
@@ -21,9 +21,10 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     }
 
     public nonisolated var defaultVoice: Voice? {
+        let all = voices
         let lang = AVSpeechSynthesisVoice.currentLanguageCode()
-        let candidates = voices.filter { $0.language == lang }
-        return candidates.max { $0.quality < $1.quality } ?? voices.first
+        let candidates = all.filter { $0.language == lang }
+        return candidates.max { $0.quality < $1.quality } ?? all.first
     }
 
     public func speak(

@@ -6,7 +6,8 @@ public enum Rate: Double, CaseIterable, Sendable, Hashable {
     public var factor: Double { rawValue }
 
     public var label: String {
-        let s = rawValue.formatted(.number.precision(.fractionLength(0...2)))
+        let s = rawValue.formatted(
+            .number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US_POSIX")))
         return s + "x"
     }
 

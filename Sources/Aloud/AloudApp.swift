@@ -30,6 +30,11 @@ struct AloudApp: App {
     @MainActor static func say(_ file: URL) async throws {
         let kind: SourceKind = DocumentType(url: file) == .markdown ? .markdown : .plainText
         let script = try await Extraction().script(for: file, kind: kind, options: .default)
+        guard !script.sentences.isEmpty else {
+            print("Nothing to read.")
+            NSApp.terminate(nil)
+            return
+        }
         let player = Player(provider: AppleVoiceProvider())
         player.load(script, at: 0)
         player.onSentence = { print(script.sentences[$0].text) }

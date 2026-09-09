@@ -48,7 +48,11 @@ public final class Player {
     }
 
     public func play() {
-        guard !script.sentences.isEmpty else { return }
+        guard !script.sentences.isEmpty else {
+            finished = true
+            onFinished?()
+            return
+        }
         if finished {
             sentenceIndex = 0
             finished = false

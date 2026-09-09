@@ -16,4 +16,10 @@ import Testing
         #expect(Rate.x2.appleRate == 0.75)
     }
     @Test func eightSteps() { #expect(Rate.allCases.count == 8) }
+    @Test func labelsAreLocaleIndependent() {
+        #expect(
+            Rate.allCases.map(\.label) == [
+                "0.75x", "1x", "1.25x", "1.5x", "1.75x", "2x", "2.5x", "3x",
+            ])
+    }
 }

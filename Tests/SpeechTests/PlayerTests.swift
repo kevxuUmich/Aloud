@@ -70,4 +70,34 @@ import Testing
         p.seek(progress: 0.9)
         #expect(p.sentenceIndex == 3)
     }
+    @Test func playOnEmptyScriptFinishesImmediately() {
+        let fake = FakeVoiceProvider()
+        let p = Player(provider: fake)
+        var done = false
+        p.onFinished = { done = true }
+        p.play()
+        #expect(done)
+        #expect(p.finished)
+        #expect(!p.isPlaying)
+        #expect(fake.spoken.isEmpty)
+    }
+    @Test func playReportsTheStartingSentence() {
+        let (p, _) = make()
+        let source = "One two three. Four five six. Seven eight nine. Ten eleven twelve."
+        p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 2)
+        var reported: [Int] = []
+        p.onSentence = { reported.append($0) }
+        p.play()
+        #expect(reported == [2])
+    }
+    @Test func resumeAfterPauseReportsTheSentenceAgain() {
+        let (p, fake) = make()
+        var reported: [Int] = []
+        p.onSentence = { reported.append($0) }
+        p.play()
+        fake.finishCurrent()
+        p.pause()
+        p.play()
+        #expect(reported == [0, 1, 1])
+    }
 }
