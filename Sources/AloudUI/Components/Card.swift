@@ -31,6 +31,8 @@ public struct Card: View {
         }
         .frame(width: Size.cardWidth)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(status)")
+        // A card with no status yet - a document never opened, still being sized -
+        // would otherwise be read out with a comma and then nothing.
+        .accessibilityLabel(status.isEmpty ? title : "\(title), \(status)")
     }
 }

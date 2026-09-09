@@ -16,6 +16,8 @@ import Testing
         #"\.opacity\(\s*0?\.\d"#,
         #"duration:\s*\d"#,
         #"lineWidth:\s*\d"#,
+        #"lineLimit\(\s*\d"#,
+        #"Color\.(red|blue|green|orange|yellow|purple|pink|gray|white|black)\b"#,
     ]
 
     static func swiftFiles(under dir: String) -> [URL] {

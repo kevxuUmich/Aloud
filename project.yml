@@ -8,6 +8,14 @@ options:
 packages:
   Aloud:
     path: .
+  # The same pin, and for the same reason, as the one in `Package.swift`: every
+  # KeyboardShortcuts tag from 1.16.0 up carries a `#Preview` whose macro plugin ships
+  # with Xcode rather than with the command line tools, so 1.15.0 is the newest tag
+  # that builds here. The two pins move together or the Xcode target and `swift build`
+  # resolve two different versions of the same package.
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: 1.15.0
 targets:
   Aloud:
     type: application
@@ -23,6 +31,10 @@ targets:
         product: Vault
       - package: Aloud
         product: Speech
+      # `Sources/Aloud` is compiled into this target directly rather than reached as a
+      # product of the local package, so the app's own dependency has to be named here
+      # too; without it the Xcode build cannot see `import KeyboardShortcuts`.
+      - package: KeyboardShortcuts
     entitlements:
       path: App/Aloud.entitlements
     settings:

@@ -2,8 +2,9 @@ import SwiftUI
 
 public struct Gallery: View {
     public static let sections = [
-        "GlassBar", "Card", "FolderCard", "IconButton", "TransportButton",
-        "RateButton", "Scrubber", "EmptyState", "Notice",
+        "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
+        "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
+        "ListRow", "VoiceRow",
     ]
     public init() {}
     public var body: some View {
@@ -11,7 +12,20 @@ public struct Gallery: View {
             VStack(alignment: .leading, spacing: Space.xxl) {
                 section("GlassBar") {
                     GlassBar {
-                        Text("Left"); Spacer(); Text("Right")
+                        HStack(spacing: Space.l) {
+                            Text("Left")
+                            Spacer()
+                            Text("Right")
+                        }
+                    }
+                }
+                section("GlassBar docked") {
+                    GlassBar(docked: true) {
+                        HStack(spacing: Space.l) {
+                            Text("Left")
+                            Spacer()
+                            Text("Right")
+                        }
                     }
                 }
                 section("Card") {
@@ -49,8 +63,34 @@ public struct Gallery: View {
                 section("Scrubber") {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
                 }
-                section("EmptyState") { EmptyState(onPickFolder: {}, onPaste: {}) }
+                section("EmptyState no vault") {
+                    EmptyState(kind: .noVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                }
+                section("EmptyState empty vault") {
+                    EmptyState(
+                        kind: .emptyVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                }
                 section("Notice") { Notice("Voice not available, using the system default") }
+                section("ListRow") {
+                    VStack(alignment: .leading, spacing: Space.none) {
+                        ListRow(title: "Essays", status: "12 documents", symbol: "folder.fill")
+                        ListRow(title: "It's been a fast year.", status: "~8 min", symbol: "doc.fill")
+                        ListRow(title: "Finished one", status: "Finished", symbol: "doc.fill")
+                    }
+                }
+                section("VoiceRow") {
+                    VStack(alignment: .leading, spacing: Space.none) {
+                        VoiceRow(
+                            name: "Samantha", region: "United States", quality: "Premium",
+                            isSelected: true, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Daniel", region: "United Kingdom", quality: "Enhanced",
+                            isSelected: false, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Majed", region: nil, quality: "Default",
+                            isSelected: false, onPreview: {}, onPick: {})
+                    }
+                }
             }
             .padding(Space.xxl)
         }

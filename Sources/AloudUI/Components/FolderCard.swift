@@ -20,6 +20,8 @@ public struct FolderCard: View {
         }
         .frame(width: Size.cardWidth)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name), \(count) documents")
+        // The same words the caption carries, so the two never disagree about an
+        // empty folder.
+        .accessibilityLabel("\(name), " + (count == 0 ? "Empty folder" : "\(count) documents"))
     }
 }

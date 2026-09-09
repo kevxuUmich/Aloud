@@ -11,6 +11,7 @@ public final class FakeVoiceProvider: VoiceProvider {
     }
     public private(set) var spoken: [Request] = []
     public private(set) var stops = 0
+    public private(set) var previewed: [Voice] = []
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
 
@@ -29,6 +30,8 @@ public final class FakeVoiceProvider: VoiceProvider {
         self.onWord = onWord
         self.onFinish = onFinish
     }
+
+    public func preview(_ voice: Voice) { previewed.append(voice) }
 
     public func stop() {
         stops += 1

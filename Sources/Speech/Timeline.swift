@@ -34,3 +34,9 @@ public struct Timeline: Sendable {
         return Double(c.seconds) + Double(c.attoseconds) / 1e18
     }
 }
+
+/// The same conversion as `Timeline.seconds(_:)`, reachable from a `Duration` itself.
+/// Public because Now Playing wants seconds and the app targets read it.
+extension Duration {
+    public var seconds: Double { Timeline.seconds(self) }
+}

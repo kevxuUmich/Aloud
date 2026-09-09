@@ -4,7 +4,9 @@ import Prose
 
 @Observable @MainActor
 public final class Player {
-    public static let skipSeconds: Double = 15
+    /// Nonisolated because it is a constant, and the media-key bindings read it from
+    /// outside the main actor to set the transport's skip interval.
+    public nonisolated static let skipSeconds: Double = 15
 
     public private(set) var script: Script = .empty
     public private(set) var sentenceIndex = 0
@@ -14,10 +16,15 @@ public final class Player {
     public private(set) var timeline: Timeline
 
     public var rate: Rate = .x1 { didSet { timeline = Timeline(script: script, rate: rate) } }
-    public var voice: Voice?
+    /// Assignment is where availability is settled, so a sentence never pays for the
+    /// check and a voice that has gone is reported once rather than once a sentence.
+    public var voice: Voice? { didSet { ensureVoiceIsInstalled() } }
 
     public var onSentence: ((Int) -> Void)?
     public var onFinished: (() -> Void)?
+    /// Fired when the chosen voice is no longer installed. The player has already
+    /// fallen back to the system voice by the time this runs.
+    public var onVoiceUnavailable: ((Voice) -> Void)?
 
     private let provider: any VoiceProvider
     private var generation = 0
@@ -59,6 +66,9 @@ public final class Player {
             sentenceIndex = 0
             finished = false
         }
+        // The set can change while the app is open, so the voice is checked again here
+        // as well as at assignment; between them, `speakCurrent` needs no check at all.
+        ensureVoiceIsInstalled()
         onSentence?(sentenceIndex)
         isPlaying = true
         speakCurrent()
@@ -70,6 +80,23 @@ public final class Player {
     }
 
     public func toggle() { isPlaying ? pause() : play() }
+
+    /// Auditions a voice. It goes through the player rather than straight to the
+    /// provider so the interrupted utterance's callbacks are torn down first;
+    /// otherwise the preview's own finish would run `advance()` and skip the sentence
+    /// it cut. The sentence stays current, so `play()` speaks it again. Resuming is
+    /// the reader's move: a preview is a deliberate interruption.
+    public func preview(_ voice: Voice) {
+        stopSpeaking()
+        isPlaying = false
+        provider.preview(voice)
+    }
+
+    private func ensureVoiceIsInstalled() {
+        guard let v = voice, !provider.voices.contains(where: { $0.id == v.id }) else { return }
+        voice = provider.defaultVoice
+        onVoiceUnavailable?(v)
+    }
 
     public func seek(to index: Int) {
         let wasPlaying = isPlaying

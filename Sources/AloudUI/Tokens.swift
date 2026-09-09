@@ -1,6 +1,8 @@
 import SwiftUI
 
 public enum Space {
+    /// Rows that carry their own vertical padding stack flush.
+    public static let none: CGFloat = 0
     public static let xs: CGFloat = 4
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
@@ -11,13 +13,21 @@ public enum Space {
 }
 
 public enum Radius {
+    /// A corner that is not there: the two bottom corners of a bar docked to the
+    /// window's edge, which has no edge of its own to round against.
+    public static let none: CGFloat = 0
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
     public static let l: CGFloat = 20
+    /// The two top corners of the docked transport bar.
+    public static let dockedTop: CGFloat = l
 }
 
 public enum Size {
     public static let icon: CGFloat = 16
+    /// The landing page's glyph, and the measure its lines of copy wrap at.
+    public static let landingGlyph: CGFloat = 96
+    public static let landingMeasure: CGFloat = 420
     public static let control: CGFloat = 32
     public static let playControl: CGFloat = 44
     public static let hairline: CGFloat = 1
@@ -30,6 +40,16 @@ public enum Size {
     /// Where an auto-scrolled sentence lands: one third down the visible text.
     public static let readerFollowFraction: CGFloat = 1.0 / 3.0
     public static let scrubberTrack: CGFloat = 4
+    /// The voice popover: wide enough for a name, a region and a quality on one line,
+    /// tall enough for a section header and about eight voices under it.
+    public static let popoverWidth: CGFloat = 320
+    public static let popoverHeight: CGFloat = 440
+    /// The menu-bar panel: the popover's width, so the two read as one control.
+    public static let panelWidth: CGFloat = 320
+    /// The Settings window: wide enough for a folder's name, its two buttons and the
+    /// hotkey recorder on one line, and no wider, since a Form's rows are labelled at
+    /// the left and stretch would only push the controls away from their labels.
+    public static let settingsWidth: CGFloat = 520
 }
 
 public enum Ink {
@@ -44,10 +64,15 @@ public enum Ink {
     public static let track = Color.secondary.opacity(0.3)
     public static let thumbPaper = Color.white
     public static let thumbInk = Color.black
+    /// The landing page's glyph: the accent, since it is the app's own mark there.
+    public static let landingGlyph = Color.accentColor
 }
 
 public enum Type {
     public static let title = Font.title2.weight(.semibold)
+    /// The landing page, which is the whole window and carries the type to match.
+    public static let landingTitle = Font.largeTitle.weight(.semibold)
+    public static let landingBody = Font.title3
     public static let cardTitle = Font.callout.weight(.medium)
     public static let caption = Font.caption
     public static let control = Font.body.weight(.medium)
@@ -59,6 +84,10 @@ public enum Type {
     /// status off the bottom of the cell.
     public static let cardTitleLines = 2
     public static let readerLineHeightMultiple: CGFloat = 1.45
+    /// The menu-bar panel's sentence, truncated so the panel keeps its height.
+    public static let panelSentenceLines = 3
+    /// One line and no more: a list row's title, the panel's title, the transport's.
+    public static let singleLine = 1
 }
 
 public enum Motion {
@@ -66,4 +95,9 @@ public enum Motion {
     public static let normal: Double = 0.25
     public static let ease = Animation.easeOut(duration: normal)
     public static let quick = Animation.easeOut(duration: fast)
+    /// How long the search field waits after the last keystroke before it reads files.
+    public static let searchDebounceMS: Double = 200
+    /// A control that is present but has nothing to act on: the menu-bar glyph with
+    /// no document loaded.
+    public static let dimmed: Double = 0.5
 }

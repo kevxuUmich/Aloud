@@ -15,6 +15,7 @@ struct ReaderTextView: NSViewRepresentable {
     var editable: Bool
     var onClick: (Int) -> Void
     var onEdit: (String) -> Void
+    var onBlur: () -> Void
     var onUserScroll: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -145,6 +146,9 @@ struct ReaderTextView: NSViewRepresentable {
             guard let tv = n.object as? NSTextView else { return }
             parent.onEdit(tv.string)
         }
+        /// The editor losing first responder: a click elsewhere, another window coming
+        /// forward. The draft is written rather than left hanging on a button press.
+        func textDidEndEditing(_ n: Notification) { parent.onBlur() }
     }
 }
 
@@ -158,6 +162,28 @@ final class ClickableTextView: NSTextView {
             return
         }
         coordinator?.parent.onClick(index)
+    }
+
+    /// Scrolling by keyboard is scrolling: page up and down, the arrows, and space,
+    /// which pages a text view that is not being edited. Each cancels follow the way a
+    /// drag on the scroller does, so the reader who has gone looking is not dragged
+    /// back at the next sentence. In the editor these keys move the caret and the
+    /// reader is not following anything, so nothing is cancelled.
+    override func keyDown(with event: NSEvent) {
+        if !isEditable, Self.scrollKeys.contains(Int(event.keyCode)) {
+            coordinator?.parent.onUserScroll()
+        }
+        super.keyDown(with: event)
+    }
+
+    /// Page up, page down, home, end, the four arrows, and space.
+    private static let scrollKeys: Set<Int> = [116, 121, 115, 119, 123, 124, 125, 126, 49]
+
+    /// A wheel or a two-finger swipe. `willStartLiveScroll` covers the scroller and
+    /// the drag; the momentum a trackpad throws afterwards arrives here alone.
+    override func scrollWheel(with event: NSEvent) {
+        coordinator?.parent.onUserScroll()
+        super.scrollWheel(with: event)
     }
 
     /// The character actually under `point`, or nil when the point is in the padding,

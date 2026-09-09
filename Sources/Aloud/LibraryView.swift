@@ -1,10 +1,13 @@
 import AloudUI
+import KeyboardShortcuts
 import SwiftUI
 import Vault
 
 struct LibraryView: View {
-    var model: AppModel
+    @Bindable var model: AppModel
     var folderURL: URL?
+    /// Same key as `Defaults.listView`, so Settings and the toolbar toggle agree.
+    @AppStorage("listView") private var listView = false
 
     var isTopLevel: Bool { folderURL == nil }
     /// Derived live from `model.tree` on every render, so a nested grid never goes stale
@@ -25,59 +28,109 @@ struct LibraryView: View {
             ? (model.tree.count == 1 ? (model.tree.first?.documents ?? []) : []) : (folder?.documents ?? [])
         return docs.sorted { $0.modified > $1.modified }
     }
-    var title: String { isTopLevel ? "Aloud" : (folder?.name ?? "Aloud") }
+    /// A search reaches the whole tree, not the folder being looked at, and returns
+    /// documents alone: a folder does not have a body to match.
+    var results: [Document]? {
+        guard let hits = model.searchResults else { return nil }
+        return model.documents
+            .filter { hits.contains($0.id) }
+            .sorted { $0.modified > $1.modified }
+    }
+    var title: String { results != nil ? "Search" : (isTopLevel ? "Aloud" : (folder?.name ?? "Aloud")) }
     var isGone: Bool { !isTopLevel && folder == nil }
+
+    /// The hotkey as it is bound now, for the landing's hint. `AloudUI` cannot see
+    /// KeyboardShortcuts; the default is the one `Name.pasteAndPlay` ships with, for
+    /// the case where the user has cleared the binding.
+    @MainActor static var hotkeyText: String {
+        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Ctrl+Option+Space"
+    }
 
     var body: some View {
         Group {
             if model.roots.isEmpty {
-                // Paste lands in plan 2; nothing to do here yet.
-                EmptyState(onPickFolder: model.pickRootFolder, onPaste: {})
+                EmptyState(
+                    kind: .noVault, hotkey: Self.hotkeyText, onPrimary: model.pickRootFolder,
+                    onSecondary: { model.pasteNote() })
+            } else if isTopLevel, !model.scanned, model.tree.isEmpty, model.notice == nil {
+                // The roots are known and the first scan has not come back yet. An
+                // empty grid here would read as an empty vault, which it is not.
+                // It goes as soon as a scan lands, and it never covers a notice: a
+                // vault whose every root failed has something to say, and a spinner
+                // that outlives the answer is a spinner that never stops.
+                ProgressView("Scanning your folders")
+                    .font(Type.caption)
+                    .foregroundStyle(Ink.soft)
+                    .padding(Space.xxl)
+            } else if isTopLevel, model.scanned, model.documents.isEmpty,
+                results == nil
+            {
+                // Folders are chosen and scanned, and not one of them holds a file this
+                // app can read. A grid of empty folders would say the same thing, but
+                // without the two ways out of it.
+                EmptyState(
+                    kind: .emptyVault, hotkey: Self.hotkeyText, onPrimary: model.pickFilesToImport,
+                    onSecondary: { model.pasteNote() })
             } else if isGone {
                 Text("This folder is gone.")
                     .font(Type.cardTitle)
                     .foregroundStyle(Ink.soft)
                     .padding(Space.xxl)
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: Size.cardWidth), spacing: Space.xl)],
-                        alignment: .leading, spacing: Space.xxl
-                    ) {
-                        if showsRoots {
-                            ForEach(model.tree) { root in
-                                Button {
-                                    model.path.append(.folder(root.url))
-                                } label: {
-                                    FolderCard(name: root.name, count: root.documentCount)
-                                }.buttonStyle(.plain)
-                            }
-                        } else {
-                            ForEach(folders) { f in
-                                Button {
-                                    model.path.append(.folder(f.url))
-                                } label: {
-                                    FolderCard(name: f.name, count: f.documentCount)
-                                }.buttonStyle(.plain)
-                            }
-                            ForEach(documents) { d in
-                                Button {
-                                    model.open(d)
-                                } label: {
-                                    Card(title: d.title, preview: d.preview, status: model.status(for: d))
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(Space.xxl)
-                }
+                ScrollView { contents }
             }
         }
+        // Focusable so a bare Cmd+V reaches the library rather than the system, and on
+        // the outside of the Group so it reaches the landing too: an empty vault is
+        // exactly where pasting a note is the thing to do, and the paste bound to the
+        // grid alone was a command that worked everywhere except where it was offered.
+        // The focus effect stays on: a keyboard user who lands on the container has to
+        // be able to see that the focus is there.
+        .focusable()
+        .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
         .navigationTitle(title)
+        .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "Search")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                IconButton("folder.badge.plus", label: "Add vault folder", action: model.pickRootFolder)
+                Picker("View", selection: $listView) {
+                    Image(systemName: "square.grid.2x2").accessibilityLabel("Grid").tag(false)
+                    Image(systemName: "list.bullet").accessibilityLabel("List").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .help("Grid or list")
             }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("New Note from Clipboard") { model.pasteNote() }
+                    Button("Import Files...") { model.pickFilesToImport() }
+                    Divider()
+                    Button("Add Vault Folder...") { model.pickRootFolder() }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add")
+                .help("Add")
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            model.drop(urls)
+            return true
+        }
+    }
+
+    /// One of three: the flat search results, the list, or the grid. Clearing the field
+    /// drops `searchResults` back to nil and the folder returns exactly as it was.
+    @ViewBuilder var contents: some View {
+        if let results {
+            LibraryList(model: model, roots: [], folders: [], documents: results)
+        } else if listView {
+            LibraryList(
+                model: model, roots: showsRoots ? model.tree : [], folders: folders,
+                documents: documents)
+        } else {
+            LibraryGrid(
+                model: model, roots: showsRoots ? model.tree : [], folders: folders,
+                documents: documents)
         }
     }
 }

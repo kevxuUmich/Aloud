@@ -121,4 +121,32 @@ import Testing
         p.play()
         #expect(reported == [0, 1, 1])
     }
+    /// A voice can be removed in System Settings between launches. The player says so
+    /// once and carries on in the system voice rather than falling silent.
+    @Test func missingVoiceFallsBackAndReports() {
+        let (p, fake) = make()
+        var reported: Voice?
+        p.onVoiceUnavailable = { reported = $0 }
+        p.voice = Voice(id: "ghost", name: "Ghost", language: "en-US", quality: .standard)
+        p.play()
+        #expect(reported?.id == "ghost")
+        #expect(fake.spoken.last?.voice?.id == "fake")
+        #expect(p.voice?.id == "fake")
+    }
+    /// A preview is a deliberate interruption: it pauses where it is rather than
+    /// letting the preview's own finish advance the player past the sentence it cut.
+    @Test func previewWhilePlayingPausesAtTheCurrentSentence() {
+        let (p, fake) = make()
+        p.play()
+        fake.finishCurrent()
+        #expect(p.sentenceIndex == 1)
+        let v = Voice(id: "other", name: "Other", language: "en-US", quality: .standard)
+        p.preview(v)
+        #expect(!p.isPlaying)
+        #expect(fake.stops == 1)
+        #expect(fake.previewed == [v])
+        #expect(p.sentenceIndex == 1)
+        p.play()
+        #expect(fake.spoken.last?.text == "Four five six.")
+    }
 }

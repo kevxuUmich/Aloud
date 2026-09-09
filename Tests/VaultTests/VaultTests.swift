@@ -24,6 +24,7 @@ import Testing
         let doc = try await vault.tree()[0].documents[0]
         try await vault.save(text: "v2", to: doc)
         #expect(try String(contentsOf: url, encoding: .utf8) == "v2")
+        #expect(await vault.writes == 1)
     }
     @Test func refusesToSavePDF() async throws {
         let root = try tempRoot()
@@ -32,5 +33,16 @@ import Testing
             url: root.appendingPathComponent("x.pdf"), title: "x", preview: "", modified: .now,
             bytes: 0, type: .pdf)
         await #expect(throws: VaultError.self) { try await vault.save(text: "no", to: pdf) }
+    }
+    @Test func rawTextIsTheFileNotTheProse() async throws {
+        let root = try tempRoot()
+        let vault = Vault(roots: [root])
+        let url = try await vault.makeNote(text: "# Title\n\nSome *emphasis*.", in: root)
+        let doc = try await vault.tree()[0].documents[0]
+        #expect(try await vault.rawText(of: doc) == "# Title\n\nSome *emphasis*.")
+        let pdf = Document(
+            url: url.deletingLastPathComponent().appendingPathComponent("x.pdf"), title: "x",
+            preview: "", modified: .now, bytes: 0, type: .pdf)
+        await #expect(throws: VaultError.self) { try await vault.rawText(of: pdf) }
     }
 }
