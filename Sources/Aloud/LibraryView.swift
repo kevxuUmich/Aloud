@@ -42,9 +42,12 @@ struct LibraryView: View {
         Group {
             if model.roots.isEmpty {
                 EmptyState(onPickFolder: model.pickRootFolder, onPaste: { model.pasteNote() })
-            } else if isTopLevel, model.tree.isEmpty {
+            } else if isTopLevel, !model.scanned, model.tree.isEmpty, model.notice == nil {
                 // The roots are known and the first scan has not come back yet. An
                 // empty grid here would read as an empty vault, which it is not.
+                // It goes as soon as a scan lands, and it never covers a notice: a
+                // vault whose every root failed has something to say, and a spinner
+                // that outlives the answer is a spinner that never stops.
                 ProgressView("Scanning your folders")
                     .font(Type.caption)
                     .foregroundStyle(Ink.soft)

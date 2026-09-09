@@ -52,6 +52,10 @@ final class AppModel {
     /// init and again after every write, so the toggle snaps back when a write fails.
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     var tree: [Folder] = []
+    /// True once a scan has come back, however it came back. An empty tree means an
+    /// empty vault after this and means "not looked yet" before it, and the library
+    /// shows a different thing for each.
+    private(set) var scanned = false
     var path: [Route] = []
     var current: Document?
     var notice: String?
@@ -373,7 +377,10 @@ final class AppModel {
         if panel.runModal() == .OK { importFiles(panel.urls) }
     }
 
-    func refresh() async {
+    /// `afterOwnSave` is set by the write below and by nothing else. It is what lets
+    /// the follow run under the editor: the draft there is the text that was just
+    /// written, so re-extracting cannot lose it. Every other caller leaves it alone.
+    func refresh(afterOwnSave: Bool = false) async {
         do {
             tree = try await vault.tree()
             let names = unreadableNames(in: tree)
@@ -383,15 +390,18 @@ final class AppModel {
         } catch {
             notice = "Could not read a vault folder: \(error.localizedDescription)"
         }
-        await followCurrentFile()
+        // A scan that failed is still a scan: the library has an answer to show, even
+        // when the answer is a notice, and the first-scan spinner has to give way to it.
+        scanned = true
+        await followCurrentFile(evenWhileEditing: afterOwnSave)
     }
 
     /// The document being read changed on disk - saved in another editor, rewritten by
     /// a script - so the reader follows it, re-anchored on the sentence it was reading.
     /// Not while it is being edited: the draft in the editor is the newer text, and
     /// re-extracting under it would throw that away.
-    private func followCurrentFile() async {
-        guard let c = current, !isEditing, let fresh = document(at: c.url),
+    private func followCurrentFile(evenWhileEditing: Bool = false) async {
+        guard let c = current, evenWhileEditing || !isEditing, let fresh = document(at: c.url),
             fresh.modified != c.modified
         else { return }
         let anchorText = currentSentenceText
@@ -540,10 +550,17 @@ final class AppModel {
             try await vault.save(text: text, to: doc)
             lastSavedText[doc.url.path] = text
             await extraction.invalidate(doc.url)
-            // The reload is for the document still being read. A save on the way out
-            // of a reader the user has already left behind changes the file and
-            // nothing else; the folder watcher picks it up when they return.
-            Task { await reload(doc) }
+            // One reload per save, and it is this one. Rebuilding the tree here is what
+            // moves `current` on to the new `modified`, so the folder watcher's own
+            // refresh a moment later compares equal and does nothing; reloading
+            // directly instead would leave that comparison different and buy a second
+            // load, which restarts the sentence out loud. The reload is for the
+            // document still being read: a save on the way out of a reader the user
+            // has already left behind changes the file and nothing else, and
+            // `followCurrentFile` declines it because `current` is no longer this one.
+            // It is detached for the same reason the reload it replaces was: the write
+            // has landed and the editor is waiting on that, not on a tree scan.
+            Task { await refresh(afterOwnSave: true) }
             return true
         } catch {
             notice = "Could not save \(doc.title): \(error.localizedDescription)"
