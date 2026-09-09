@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MediaPlayer
 import Observation
@@ -26,9 +27,14 @@ public final class SystemNowPlayingCenter: NowPlayingCenter {
     public func set(info: [String: Any]) {
         var mp: [String: Any] = [:]
         if let t = info["title"] { mp[MPMediaItemPropertyTitle] = t }
+        if let s = info["subtitle"] { mp[MPMediaItemPropertyArtist] = s }
         if let d = info["duration"] { mp[MPMediaItemPropertyPlaybackDuration] = d }
         if let e = info["elapsed"] { mp[MPNowPlayingInfoPropertyElapsedPlaybackTime] = e }
         if let r = info["rate"] { mp[MPNowPlayingInfoPropertyPlaybackRate] = r }
+        if let image = info["artwork"] as? NSImage {
+            // The card asks for the size it wants and gets the one image whatever it asks.
+            mp[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = mp
     }
     public func set(playing: Bool) {
@@ -81,14 +87,19 @@ public final class SystemRemoteCommands: RemoteCommands {
 public final class NowPlaying {
     private let player: Player
     private let center: any NowPlayingCenter
+    /// One image for every document: the app renders it once at launch, and the card
+    /// shows a plate rather than a grey square.
+    private let artwork: NSImage?
     private var title: String?
+    private var subtitle: String?
     private var observation: Task<Void, Never>?
 
     public init(
-        player: Player, center: any NowPlayingCenter = SystemNowPlayingCenter(),
+        player: Player, artwork: NSImage? = nil, center: any NowPlayingCenter = SystemNowPlayingCenter(),
         commands: any RemoteCommands = SystemRemoteCommands()
     ) {
         self.player = player
+        self.artwork = artwork
         self.center = center
         commands.bind(
             play: { [weak self] in
@@ -116,22 +127,30 @@ public final class NowPlaying {
 
     deinit { observation?.cancel() }
 
-    public func update(title: String?) {
+    public func update(title: String?, subtitle: String?) {
         self.title = title
+        self.subtitle = subtitle
         push()
     }
+
+    /// Kept for the app until every caller passes a subtitle; removed in the same
+    /// change that makes them.
+    public func update(title: String?) { update(title: title, subtitle: nil) }
 
     /// Reads the player and writes the centre, and only ever in that direction. The
     /// observation loop below re-runs this whenever the observed state changes, so a
     /// write back into any observed property here would wake the loop that called it
     /// and spin forever. Nothing in this method may touch player state.
     private func push() {
-        center.set(info: [
+        var info: [String: Any] = [
             "title": title ?? "Aloud",
             "duration": player.timeline.total.seconds,
             "elapsed": player.elapsed.seconds,
             "rate": player.isPlaying ? player.rate.factor : 0,
-        ])
+        ]
+        if let subtitle { info["subtitle"] = subtitle }
+        if let artwork { info["artwork"] = artwork }
+        center.set(info: info)
         center.set(playing: player.isPlaying)
     }
 

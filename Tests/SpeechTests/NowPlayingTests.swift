@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Prose
 import Testing
@@ -39,7 +40,7 @@ import Testing
         let center = FakeCenter()
         let commands = FakeCommands()
         let np = NowPlaying(player: p, center: center, commands: commands)
-        np.update(title: "Essay")
+        np.update(title: "Essay", subtitle: nil)
         #expect(center.info["title"] as? String == "Essay")
         commands.play?()
         #expect(p.isPlaying)
@@ -49,6 +50,20 @@ import Testing
         #expect(center.playing == false)
         commands.forward?()
         #expect(p.sentenceIndex == 1)
+    }
+    /// The card has a subtitle line and a plate, and both are the app's to fill.
+    @Test func pushesTheSubtitleAndTheArtwork() {
+        let p = Player(provider: FakeVoiceProvider())
+        let center = FakeCenter()
+        let art = NSImage(size: NSSize(width: 1, height: 1))
+        let np = NowPlaying(player: p, artwork: art, center: center, commands: FakeCommands())
+        np.update(title: "Essay", subtitle: "Essays")
+        #expect(center.info["title"] as? String == "Essay")
+        #expect(center.info["subtitle"] as? String == "Essays")
+        #expect(center.info["artwork"] as? NSImage === art)
+        np.update(title: nil, subtitle: nil)
+        #expect(center.info["title"] as? String == "Aloud")
+        #expect(center.info["subtitle"] == nil)
     }
     /// The observation and the release below both land on their own schedule, so the
     /// suite waits for the condition rather than for a fixed sleep, which is either
@@ -69,7 +84,7 @@ import Testing
         let p = Player(provider: fake)
         let center = FakeCenter()
         let np = NowPlaying(player: p, center: center, commands: FakeCommands())
-        np.update(title: "Essay")
+        np.update(title: "Essay", subtitle: nil)
         let src = "One two three. Four five six. Seven eight nine."
         p.load(Script(source: src, sentences: SentenceSplitter.split(src)), at: 0)
         try await poll { center.info["duration"] as? Double == p.timeline.total.seconds }
