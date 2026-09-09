@@ -25,8 +25,16 @@ final class AppModel {
         self.player = Player(provider: provider)
         self.progress = progress
         let loaded = rootStore.load()
-        self.roots = loaded
-        self.vault = Vault(roots: loaded)
+        self.roots = loaded.urls
+        self.vault = Vault(roots: loaded.urls)
+        if loaded.unresolved > 0 {
+            let n = loaded.unresolved
+            // The bookmarks are kept: the volume may simply be unmounted.
+            self.notice =
+                n == 1
+                ? "1 vault folder is no longer reachable"
+                : "\(n) vault folders are no longer reachable"
+        }
         player.onSentence = { [weak self] i in self?.record(index: i, finished: false) }
         player.onFinished = { [weak self] in
             guard let self, self.current != nil else { return }
@@ -90,7 +98,7 @@ final class AppModel {
     func toggleFinished(_ doc: Document) {
         let p = progress.progress(for: doc.url)
         progress.set(
-            Progress(
+            PlaybackProgress(
                 sentenceIndex: p?.sentenceIndex ?? 0, finished: !(p?.finished ?? false),
                 lastPlayed: .now),
             for: doc.url)
@@ -126,7 +134,7 @@ final class AppModel {
 
     private func record(index: Int, finished: Bool) {
         guard let c = current else { return }
-        progress.set(Progress(sentenceIndex: index, finished: finished, lastPlayed: .now), for: c.url)
+        progress.set(PlaybackProgress(sentenceIndex: index, finished: finished, lastPlayed: .now), for: c.url)
     }
 
     func folder(at url: URL) -> Folder? {

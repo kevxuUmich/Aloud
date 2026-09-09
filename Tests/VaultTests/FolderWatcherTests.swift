@@ -16,8 +16,9 @@ import Testing
         try "a".write(to: nested.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
         try "b".write(to: nested.appendingPathComponent("b.md"), atomically: true, encoding: .utf8)
         try await Task.sleep(for: .seconds(2))
+        // Only the lower bound is stable: FSEvents coalesces on its own schedule, so a
+        // loaded machine can deliver the two writes as two callbacks or as five.
         #expect(fired.count >= 1)
-        #expect(fired.count <= 2)
     }
 
     @Test func stopTwiceDoesNotCrash() async throws {

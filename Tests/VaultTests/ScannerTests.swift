@@ -72,4 +72,17 @@ import Testing
         #expect(f.unreadable.map(\.lastPathComponent) == ["Blocked"])
         #expect(f.documents.map(\.title) == ["Ok"])
     }
+
+    @Test func headTextDoesNotCutAMultiByteCharacterInHalf() throws {
+        let root = try makeEmptyRoot()
+        // One ASCII byte then two-byte characters, so the read's byte ceiling lands
+        // between the lead byte and the continuation byte of one of them.
+        let text = "a" + String(repeating: "\u{e9}", count: 2000)
+        let file = root.appendingPathComponent("accents.md")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        let head = Scanner.headText(of: file)
+        #expect(!head.contains("\u{fffd}"))
+        #expect(head.hasSuffix("\u{e9}"))
+        #expect(head.count == 1 + (Scanner.previewBytes * 4 - 1) / 2)
+    }
 }

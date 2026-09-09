@@ -61,6 +61,34 @@ public enum Scanner {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
         defer { try? handle.close() }
         let data = (try? handle.read(upToCount: previewBytes * 4)) ?? Data()
-        return String(decoding: data, as: UTF8.self)
+        return String(decoding: trimmingPartialScalar(data), as: UTF8.self)
+    }
+
+    /// The read stops at a byte count, which can land inside a multi-byte character,
+    /// and decoding that tail would put a U+FFFD at the end of every such preview.
+    /// Walk back over the continuation bytes and drop the lead byte too when the
+    /// sequence it opened is short.
+    static func trimmingPartialScalar(_ data: Data) -> Data {
+        var end = data.endIndex
+        var continuations = 0
+        while end > data.startIndex, continuations < 3 {
+            let byte = data[data.index(before: end)]
+            if byte & 0xC0 == 0x80 {
+                continuations += 1
+                end = data.index(before: end)
+                continue
+            }
+            let expected: Int
+            switch byte {
+            case 0x00...0x7F: expected = 0
+            case 0xC0...0xDF: expected = 1
+            case 0xE0...0xEF: expected = 2
+            case 0xF0...0xF7: expected = 3
+            default: expected = 0
+            }
+            if expected == continuations { return data[data.startIndex..<data.endIndex] }
+            return data[data.startIndex..<data.index(before: end)]
+        }
+        return data[data.startIndex..<end]
     }
 }
