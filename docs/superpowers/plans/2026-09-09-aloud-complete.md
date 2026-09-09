@@ -1542,6 +1542,82 @@ git add -A && git commit -m "docs: v1 complete"
 
 ---
 
+### Task 12: The landing state and the docked transport bar
+
+**Files:**
+- Modify: `Sources/AloudUI/Components/EmptyState.swift`, `Sources/AloudUI/Components/GlassBar.swift`, `Sources/AloudUI/Gallery.swift`, `Sources/AloudUI/Tokens.swift`, `Sources/Aloud/RootView.swift`, `Sources/Aloud/TransportBarView.swift`, `Sources/Aloud/LibraryView.swift`, `Tests/AloudUITests/GalleryTests.swift`
+
+**Interfaces:**
+- Produces: `EmptyState(kind: EmptyState.Kind, onPrimary:, onSecondary:)` with `public enum Kind { case noVault, emptyVault }`; `GlassBar(docked: Bool = false)`; the transport bar always present.
+
+Kevin's request: "we need a better empty landing state. Also make sure the play bar is always at the bottom."
+
+- [ ] **Step 1: Tokens**
+
+Add to `Tokens.swift`: `Size.landingGlyph: CGFloat = 96`, `Size.landingMeasure: CGFloat = 420`, `Type.landingTitle = Font.largeTitle.weight(.semibold)`, `Type.landingBody = Font.title3`, `Ink.landingGlyph = Color.accentColor`, `Radius.dockedTop = Radius.l`.
+
+- [ ] **Step 2: EmptyState fills the window**
+
+```swift
+public struct EmptyState: View {
+    public enum Kind { case noVault, emptyVault }
+    let kind: Kind
+    let onPrimary: () -> Void
+    let onSecondary: () -> Void
+    public init(kind: Kind, onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void) { ... }
+    var body: some View {
+        VStack(spacing: Space.xl) {
+            Image(systemName: "waveform")
+                .resizable().scaledToFit()
+                .frame(width: Size.landingGlyph, height: Size.landingGlyph)
+                .foregroundStyle(Ink.landingGlyph)
+                .accessibilityHidden(true)
+            Text("Aloud").font(Type.landingTitle)
+            Text(kind == .noVault
+                 ? "Point it at a folder of notes, or paste anything, and listen."
+                 : "This folder has no .md, .txt or .pdf files yet.")
+                .font(Type.landingBody).foregroundStyle(Ink.soft)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: Size.landingMeasure)
+            HStack(spacing: Space.m) {
+                Button(kind == .noVault ? "Choose a folder" : "Import files", action: onPrimary).buttonStyle(.glassProminent)
+                Button("Paste from clipboard", action: onSecondary).buttonStyle(.glass)
+            }
+            Text("Drop files or folders anywhere in this window. Ctrl+Option+Space reads the clipboard from any app.")
+                .font(Type.caption).foregroundStyle(Ink.soft)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: Size.landingMeasure)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(Space.xxxl)
+    }
+}
+```
+
+The hint's hotkey text should read the current shortcut; `AloudUI` cannot see KeyboardShortcuts, so `EmptyState` takes `hotkey: String` in its init and the app passes `KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Ctrl+Option+Space"`.
+
+`LibraryView`: `roots.isEmpty` shows `.noVault` (primary = `pickRootFolder`, secondary = `pasteNote`); a scanned tree with zero documents anywhere (`model.allDocuments(in: tree).isEmpty`) at the top level shows `.emptyVault` (primary = `pickFilesToImport`, secondary = `pasteNote`).
+
+- [ ] **Step 3: Transport bar always present and docked**
+
+`GlassBar(docked:)`: when `docked`, the glass shape is `.rect(topLeadingRadius: Radius.dockedTop, topTrailingRadius: Radius.dockedTop)` (bottom corners square), no horizontal inset. `RootView`'s `safeAreaInset(edge: .bottom)` always shows `TransportBarView` (no `if model.current != nil`), with no outer padding so the bar sits flush to the bottom and spans the width; the bar's own padding stays inside.
+
+`TransportBarView` when `model.current == nil`: controls `.disabled(true)`, the title slot shows "Nothing loaded" in `Ink.soft`, the scrubber shows `0:00` and `~0:00` at progress 0. `Player.elapsed`/`remaining` already return zero for an empty script; check `progress` is 0 and not NaN.
+
+- [ ] **Step 4: Gallery and test**
+
+Gallery shows both `EmptyState` kinds and `GlassBar(docked: true)`; `GalleryTests.sections` count still holds.
+
+- [ ] **Step 5: Run, look, commit**
+
+`make check && make test && make dev`: with no vault the landing fills the window and the bar sits at the bottom, disabled; add a vault and the bar stays put.
+
+```bash
+git add -A && git commit -m "app: a landing that fills the window, and a transport bar that is always at the bottom"
+```
+
+---
+
 ## Self-review
 
 **Spec coverage against plan-2 scope:** PDF (T1); paste, drop, import, `+` menu, empty-state paste (T2); search, list toggle, right-click with Play/Mark finished/Reveal/Delete (T3); voice popover with preview, quality tag, Get more voices, voice fallback notice, remembered voice and rate (T4); Now Playing, media keys, output-device pause (T5); menu-bar item, closing the window keeps playing, Open Aloud (T6); hotkey with empty-clipboard shake (T7); Settings: folders add/remove/default/Locate, default voice and rate, hotkey recorder, skip code, launch at login, show menu bar (T8); raw editing, save on blur and Cmd+S, dirty guard (T9); data-flow item 5 live reload, plan-1 minors (T10); docs (T11). Not covered and stated: the "In progress" status for a started document that is not current stays as is (the spec's `m:ss left` needs an extraction the library does not have); "grid/list toggle" is T3.
