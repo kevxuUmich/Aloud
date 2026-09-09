@@ -24,6 +24,14 @@ public struct Timeline: Sendable {
         return i
     }
 
+    /// The estimate for one sentence: the gap to the next start, or to the end.
+    public func duration(at index: Int) -> Duration {
+        guard !starts.isEmpty else { return .zero }
+        let i = min(max(index, 0), starts.count - 1)
+        let end = i + 1 < starts.count ? starts[i + 1] : total
+        return end - starts[i]
+    }
+
     public func elapsed(at index: Int) -> Duration {
         guard !starts.isEmpty else { return .zero }
         return starts[min(max(index, 0), starts.count - 1)]
