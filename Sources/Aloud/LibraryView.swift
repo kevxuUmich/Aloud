@@ -1,4 +1,5 @@
 import AloudUI
+import KeyboardShortcuts
 import SwiftUI
 import Vault
 
@@ -38,10 +39,19 @@ struct LibraryView: View {
     var title: String { results != nil ? "Search" : (isTopLevel ? "Aloud" : (folder?.name ?? "Aloud")) }
     var isGone: Bool { !isTopLevel && folder == nil }
 
+    /// The hotkey as it is bound now, for the landing's hint. `AloudUI` cannot see
+    /// KeyboardShortcuts; the default is the one `Name.pasteAndPlay` ships with, for
+    /// the case where the user has cleared the binding.
+    @MainActor static var hotkeyText: String {
+        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Ctrl+Option+Space"
+    }
+
     var body: some View {
         Group {
             if model.roots.isEmpty {
-                EmptyState(onPickFolder: model.pickRootFolder, onPaste: { model.pasteNote() })
+                EmptyState(
+                    kind: .noVault, hotkey: Self.hotkeyText, onPrimary: model.pickRootFolder,
+                    onSecondary: { model.pasteNote() })
             } else if isTopLevel, !model.scanned, model.tree.isEmpty, model.notice == nil {
                 // The roots are known and the first scan has not come back yet. An
                 // empty grid here would read as an empty vault, which it is not.
@@ -52,6 +62,15 @@ struct LibraryView: View {
                     .font(Type.caption)
                     .foregroundStyle(Ink.soft)
                     .padding(Space.xxl)
+            } else if isTopLevel, model.scanned, model.allDocuments(in: model.tree).isEmpty,
+                results == nil
+            {
+                // Folders are chosen and scanned, and not one of them holds a file this
+                // app can read. A grid of empty folders would say the same thing, but
+                // without the two ways out of it.
+                EmptyState(
+                    kind: .emptyVault, hotkey: Self.hotkeyText, onPrimary: model.pickFilesToImport,
+                    onSecondary: { model.pasteNote() })
             } else if isGone {
                 Text("This folder is gone.")
                     .font(Type.cardTitle)

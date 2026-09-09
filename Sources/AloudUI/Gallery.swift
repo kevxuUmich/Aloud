@@ -2,8 +2,9 @@ import SwiftUI
 
 public struct Gallery: View {
     public static let sections = [
-        "GlassBar", "Card", "FolderCard", "IconButton", "TransportButton",
-        "RateButton", "Scrubber", "EmptyState", "Notice", "ListRow", "VoiceRow",
+        "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
+        "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
+        "ListRow", "VoiceRow",
     ]
     public init() {}
     public var body: some View {
@@ -11,6 +12,15 @@ public struct Gallery: View {
             VStack(alignment: .leading, spacing: Space.xxl) {
                 section("GlassBar") {
                     GlassBar {
+                        HStack(spacing: Space.l) {
+                            Text("Left")
+                            Spacer()
+                            Text("Right")
+                        }
+                    }
+                }
+                section("GlassBar docked") {
+                    GlassBar(docked: true) {
                         HStack(spacing: Space.l) {
                             Text("Left")
                             Spacer()
@@ -53,7 +63,13 @@ public struct Gallery: View {
                 section("Scrubber") {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
                 }
-                section("EmptyState") { EmptyState(onPickFolder: {}, onPaste: {}) }
+                section("EmptyState no vault") {
+                    EmptyState(kind: .noVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                }
+                section("EmptyState empty vault") {
+                    EmptyState(
+                        kind: .emptyVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                }
                 section("Notice") { Notice("Voice not available, using the system default") }
                 section("ListRow") {
                     VStack(alignment: .leading, spacing: Space.none) {

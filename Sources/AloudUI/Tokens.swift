@@ -13,13 +13,21 @@ public enum Space {
 }
 
 public enum Radius {
+    /// A corner that is not there: the two bottom corners of a bar docked to the
+    /// window's edge, which has no edge of its own to round against.
+    public static let none: CGFloat = 0
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
     public static let l: CGFloat = 20
+    /// The two top corners of the docked transport bar.
+    public static let dockedTop: CGFloat = l
 }
 
 public enum Size {
     public static let icon: CGFloat = 16
+    /// The landing page's glyph, and the measure its lines of copy wrap at.
+    public static let landingGlyph: CGFloat = 96
+    public static let landingMeasure: CGFloat = 420
     public static let control: CGFloat = 32
     public static let playControl: CGFloat = 44
     public static let hairline: CGFloat = 1
@@ -56,10 +64,15 @@ public enum Ink {
     public static let track = Color.secondary.opacity(0.3)
     public static let thumbPaper = Color.white
     public static let thumbInk = Color.black
+    /// The landing page's glyph: the accent, since it is the app's own mark there.
+    public static let landingGlyph = Color.accentColor
 }
 
 public enum Type {
     public static let title = Font.title2.weight(.semibold)
+    /// The landing page, which is the whole window and carries the type to match.
+    public static let landingTitle = Font.largeTitle.weight(.semibold)
+    public static let landingBody = Font.title3
     public static let cardTitle = Font.callout.weight(.medium)
     public static let caption = Font.caption
     public static let control = Font.body.weight(.medium)

@@ -7,42 +7,63 @@ struct TransportBarView: View {
     var player: Player { model.player }
     @State private var showVoices = false
 
+    /// Nothing loaded: the bar is still there, docked and the width of the window, but
+    /// every control in it is disabled and the title slot says so. The scrubber reads
+    /// 0:00 and ~0:00 on its own, since an empty timeline is zero long.
+    var isLoaded: Bool { model.current != nil }
+
     var body: some View {
-        GlassBar {
+        GlassBar(docked: true) {
             VStack(spacing: Space.s) {
                 Scrubber(
                     progress: player.progress,
                     elapsed: Format.clock(player.elapsed),
                     remaining: "~" + Format.clock(player.remaining),
-                    onSeek: { player.seek(progress: $0) })
+                    onSeek: { player.seek(progress: $0) }
+                )
+                .disabled(!isLoaded)
                 HStack {
-                    RateButton(
-                        label: player.rate.label, all: Rate.allCases.map(\.label),
-                        onCycle: { model.setRate(player.rate.next) },
-                        onPick: { model.setRate(Rate.allCases[$0]) })
-                    Spacer()
-                    HStack(spacing: Space.xl) {
-                        TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
-                            player.skip(seconds: -Player.skipSeconds)
+                    Group {
+                        RateButton(
+                            label: player.rate.label, all: Rate.allCases.map(\.label),
+                            onCycle: { model.setRate(player.rate.next) },
+                            onPick: { model.setRate(Rate.allCases[$0]) })
+                        Spacer()
+                        HStack(spacing: Space.xl) {
+                            TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                                player.skip(seconds: -Player.skipSeconds)
+                            }
+                            TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
+                            TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                                player.skip(seconds: Player.skipSeconds)
+                            }
                         }
-                        TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                        TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
-                            player.skip(seconds: Player.skipSeconds)
-                        }
+                        Spacer()
+                        IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
+                            .help(player.voice?.name ?? "Voice")
+                            .popover(isPresented: $showVoices, arrowEdge: .top) {
+                                VoicePopover(model: model)
+                            }
                     }
-                    Spacer()
-                    IconButton("person.wave.2", label: "Voice") { showVoices.toggle() }
-                        .help(player.voice?.name ?? "Voice")
-                        .popover(isPresented: $showVoices, arrowEdge: .top) {
-                            VoicePopover(model: model)
-                        }
-                    if model.current != nil, case .reader? = model.path.last {
-                        // On the reader, the title is already on screen; show nothing here.
-                    } else if let c = model.current {
-                        Button(c.title) { model.open(c) }.font(Type.caption).buttonStyle(.plain).lineLimit(1)
-                    }
+                    .disabled(!isLoaded)
+                    title
                 }
             }
+        }
+    }
+
+    /// The title slot: what is loaded, or that nothing is. On the reader the title is
+    /// already on screen above the bar, so the slot is empty there.
+    @ViewBuilder var title: some View {
+        if let c = model.current {
+            if case .reader? = model.path.last {
+                EmptyView()
+            } else {
+                Button(c.title) { model.open(c) }
+                    .font(Type.caption).buttonStyle(.plain).lineLimit(1)
+            }
+        } else {
+            Text("Nothing loaded").font(Type.caption).foregroundStyle(Ink.soft)
         }
     }
 }
