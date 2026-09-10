@@ -29,6 +29,27 @@ public final class Player {
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }
     }
+    /// The level the sentences are spoken at, 0 to 1, apart from the system volume.
+    /// A change while speaking is heard now, the way a rate change is: the utterance in
+    /// the air was queued at the old level, so the rest of the sentence is spoken again
+    /// from the word reached. The clock is untouched, since the timing has not changed.
+    ///
+    /// Computed over `level` rather than observed on itself: `@Observable` makes a
+    /// stored property an accessor pair, and a clamp written back from `didSet` would
+    /// re-enter the setter without end.
+    public var volume: Double {
+        get { level }
+        set {
+            let clamped = min(max(newValue, 0), Player.fullVolume)
+            guard clamped != level else { return }
+            level = clamped
+            guard isPlaying else { return }
+            stopSpeaking()
+            speakCurrent(from: currentWordStart, offset: sentenceOffset)
+        }
+    }
+    private var level = Player.fullVolume
+    public static let fullVolume = 1.0
     /// The silences between sentences. A change is heard from the next sentence: the
     /// one in the air keeps the pause it was queued with, which is a beat at most.
     public var pauses: Pauses = .standard {
@@ -172,7 +193,7 @@ public final class Player {
         startTicking()
         let pause = script.endsParagraph(at: sentenceIndex) ? pauses.paragraph : pauses.sentence
         provider.speak(
-            spoken, voice: voice, rate: rate, pause: pause,
+            spoken, voice: voice, rate: rate, pause: pause, volume: volume,
             onWord: { [weak self] ns in
                 guard let self, gen == self.generation else { return }
                 if let r = Range(ns, in: spoken) {

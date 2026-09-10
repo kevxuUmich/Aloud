@@ -54,6 +54,39 @@ import Testing
         #expect(p.sentenceIndex == 1)
         #expect(fake.spoken.last?.text == "Four five six.")
     }
+    /// The level reaches the provider with every sentence, full by default.
+    @Test func volumeReachesTheProvider() {
+        let (p, fake) = make()
+        p.play()
+        #expect(fake.spoken.last?.volume == 1)
+        fake.finishCurrent()
+        p.volume = 0.4
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.volume == 0.4)
+    }
+    /// A level change while a sentence is being spoken is heard now, the way a rate
+    /// change is: the rest of the sentence is spoken again from the word reached.
+    @Test func volumeChangeRestartsTheSentenceFromTheCurrentWord() {
+        let (p, fake) = make()
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.volume = 0.5
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.last?.text == "two three.")
+        #expect(fake.spoken.last?.volume == 0.5)
+        #expect(p.isPlaying)
+        p.pause()
+        p.volume = 0.2
+        #expect(fake.spoken.count == 2)
+    }
+    /// The level is clamped to what the synthesizer accepts.
+    @Test func volumeIsClampedToTheUnitRange() {
+        let (p, _) = make()
+        p.volume = 3
+        #expect(p.volume == 1)
+        p.volume = -1
+        #expect(p.volume == 0)
+    }
     /// Before the first word there is nothing to resume from, so the whole sentence is
     /// spoken again; and a change while paused waits for play, like any other.
     @Test func rateChangeBeforeTheFirstWordSpeaksTheWholeSentence() {

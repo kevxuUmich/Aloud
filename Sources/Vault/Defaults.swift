@@ -28,6 +28,11 @@ public enum Defaults {
         get { store.object(forKey: "paragraphPause") as? Double }
         set { store.set(newValue, forKey: "paragraphPause") }
     }
+    /// The player's level, nil until the slider is moved: full is the player's own default.
+    public static var volume: Double? {
+        get { store.object(forKey: "volume") as? Double }
+        set { store.set(newValue, forKey: "volume") }
+    }
     public static var skipCode: Bool {
         get { store.object(forKey: "skipCode") as? Bool ?? true }
         set { store.set(newValue, forKey: "skipCode") }

@@ -7,6 +7,10 @@ struct TransportBarView: View {
     var player: Player { model.player }
     @State private var showVoices = false
     @State private var showPace = false
+    /// The slider's own copy of the level while it is dragged. The player hears the
+    /// change on release, since applying it mid-sentence re-speaks the sentence's rest,
+    /// and a drag that did that on every tick would stutter.
+    @State private var draggedVolume: Double?
 
     /// Nothing loaded: the bar is still there, docked and the width of the window, but
     /// the scrubber and the transport controls are disabled and the title slot says so.
@@ -44,6 +48,16 @@ struct TransportBarView: View {
                     .fixedSize()
                     .disabled(!isLoaded)
                     HStack(spacing: Space.m) {
+                        // Live like the voice button: a level can be set before
+                        // anything is loaded and is kept for whatever is.
+                        VolumeControl(
+                            volume: Binding(
+                                get: { draggedVolume ?? player.volume },
+                                set: { draggedVolume = $0 }),
+                            onCommit: {
+                                if let v = draggedVolume { model.setVolume(v) }
+                                draggedVolume = nil
+                            })
                         RateButton(
                             label: player.rate.label, all: Rate.allCases.map(\.label),
                             onCycle: { model.setRate(player.rate.next) },

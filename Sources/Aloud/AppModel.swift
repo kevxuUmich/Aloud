@@ -158,6 +158,7 @@ final class AppModel {
             player.voice = v
         }
         if let f = Defaults.rateFactor, let r = Rate(rawValue: f) { player.rate = r }
+        if let v = Defaults.volume { player.volume = v }
         var pauses = Pauses.standard
         if let s = Defaults.sentencePause { pauses.sentence = .seconds(s) }
         if let p = Defaults.paragraphPause { pauses.paragraph = .seconds(p) }
@@ -183,6 +184,12 @@ final class AppModel {
     func setRate(_ r: Rate) {
         player.rate = r
         Defaults.rateFactor = r.factor
+    }
+
+    /// The one writer of `player.volume` after init, likewise.
+    func setVolume(_ v: Double) {
+        player.volume = v
+        Defaults.volume = player.volume
     }
 
     /// The one writer of `player.pauses` after init, likewise.

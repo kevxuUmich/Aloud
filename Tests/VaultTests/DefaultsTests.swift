@@ -35,9 +35,11 @@ import Testing
             Defaults.listView = true
             Defaults.sentencePause = 0.4
             Defaults.paragraphPause = 0.6
+            Defaults.volume = 0.7
             #expect(Defaults.noteFolderPath == "/tmp/notes")
             #expect(Defaults.voiceID == "com.apple.voice.test")
             #expect(Defaults.rateFactor == 1.25)
+            #expect(Defaults.volume == 0.7)
             #expect(Defaults.skipCode == false)
             #expect(Defaults.showMenuBar == false)
             #expect(Defaults.listView == true)

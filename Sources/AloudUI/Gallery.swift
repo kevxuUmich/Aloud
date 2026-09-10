@@ -4,7 +4,7 @@ public struct Gallery: View {
     public static let sections = [
         "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
-        "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph",
+        "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph", "VolumeControl",
     ]
     public init() {}
     public var body: some View {
@@ -55,6 +55,13 @@ public struct Gallery: View {
                         TransportButton(.play) {}
                         TransportButton(.pause) {}
                         TransportButton(.forward15) {}
+                    }
+                }
+                section("VolumeControl") {
+                    HStack(spacing: Space.xl) {
+                        VolumeControl(volume: .constant(0), onCommit: {})
+                        VolumeControl(volume: .constant(0.5), onCommit: {})
+                        VolumeControl(volume: .constant(1), onCommit: {})
                     }
                 }
                 section("RateButton") {
