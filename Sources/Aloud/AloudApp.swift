@@ -21,6 +21,9 @@ struct AloudApp: App {
     static let mainWindowID = "main"
 
     @AppStorage("showMenuBar") private var showMenuBar = true
+    /// The reader's text size, shared with the reader through the one key, so the
+    /// View menu's steps and the toolbar's menu move the same setting.
+    @AppStorage(ReaderSize.key) private var readerSize = Type.readerDefaultIndex
 
     @State private var model: AppModel
     /// The clipboard panel's owner, alive with the window closed: it is not a scene,
@@ -61,6 +64,14 @@ struct AloudApp: App {
             CommandGroup(after: .pasteboard) {
                 Button("New Note from Clipboard") { model.pasteNote() }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
+            }
+            CommandMenu("View") {
+                Button("Smaller Text") { readerSize = ReaderSize.smaller(readerSize) }
+                    .keyboardShortcut("-", modifiers: .command)
+                    .disabled(ReaderSize.clamp(readerSize) == 0)
+                Button("Larger Text") { readerSize = ReaderSize.larger(readerSize) }
+                    .keyboardShortcut("=", modifiers: .command)
+                    .disabled(ReaderSize.clamp(readerSize) == ReaderSize.last)
             }
             CommandMenu("Playback") {
                 // Space, left and right are bare keys, so while the reader's editor has

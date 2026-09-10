@@ -7,7 +7,7 @@ import Vault
 struct ReaderView: View {
     var model: AppModel
     var document: Document
-    @AppStorage("readerSizeIndex") private var sizeIndex = Type.readerDefaultIndex
+    @AppStorage(ReaderSize.key) private var sizeIndex = Type.readerDefaultIndex
     @State private var follow = true
     @State private var editing = false
     @State private var draft = ""
@@ -20,9 +20,7 @@ struct ReaderView: View {
 
     var player: Player { model.player }
     var isCurrent: Bool { model.current?.id == document.id }
-    /// `@AppStorage` hands back whatever is in defaults, including a value written by a
-    /// build with a different number of sizes, so the index is clamped in one place.
-    var stepIndex: Int { min(max(sizeIndex, 0), Type.readerSizes.count - 1) }
+    var stepIndex: Int { ReaderSize.clamp(sizeIndex) }
 
     var body: some View {
         HStack {
@@ -64,12 +62,30 @@ struct ReaderView: View {
         .navigationTitle(document.title)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                IconButton("textformat.size.smaller", label: "Smaller text") {
-                    sizeIndex = max(0, stepIndex - 1)
+                // One glyph at the weight of its neighbours. The pair of symbols it
+                // replaces drew a tiny A beside a large one, which read as a dimmed
+                // button next to a live one. The sizes are the menu's, with the two
+                // steps the View menu also carries.
+                Menu {
+                    Picker("Text size", selection: $sizeIndex) {
+                        ForEach(Type.readerSizes.indices, id: \.self) { i in
+                            Text(ReaderSize.name(i)).tag(i)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Button("Smaller") { sizeIndex = ReaderSize.smaller(sizeIndex) }
+                        .keyboardShortcut("-", modifiers: .command)
+                        .disabled(stepIndex == 0)
+                    Button("Larger") { sizeIndex = ReaderSize.larger(sizeIndex) }
+                        .keyboardShortcut("=", modifiers: .command)
+                        .disabled(stepIndex == ReaderSize.last)
+                } label: {
+                    Image(systemName: "textformat.size")
                 }
-                IconButton("textformat.size.larger", label: "Larger text") {
-                    sizeIndex = min(Type.readerSizes.count - 1, stepIndex + 1)
-                }
+                .menuIndicator(.hidden)
+                .accessibilityLabel("Text size")
+                .help("Text size")
                 // Editing shows the file as it is written, Markdown and all, and
                 // writes it back verbatim. A PDF has no source to edit.
                 IconButton(editing ? "checkmark" : "pencil", label: editButtonLabel) {
