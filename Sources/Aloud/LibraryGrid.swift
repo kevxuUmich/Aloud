@@ -42,7 +42,8 @@ struct LibraryGrid: View {
         } label: {
             FolderCard(name: f.name, count: f.documentCount)
         }.buttonStyle(.plain)
-        if roots.isEmpty {
+        // The built-in notes folder is the one root that cannot be dropped.
+        if roots.isEmpty || model.isBuiltIn(f.url) {
             card
         } else {
             card.contextMenu {

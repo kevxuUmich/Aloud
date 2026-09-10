@@ -48,7 +48,10 @@ struct LibraryView: View {
 
     var body: some View {
         Group {
-            if model.roots.isEmpty {
+            // Nothing attached and nothing in Aloud's own folder: the first landing.
+            // The built-in folder is a root, so it is the documents that say whether
+            // there is anything to show, not the roots.
+            if model.roots.isEmpty, model.documents.isEmpty {
                 EmptyState(
                     kind: .noVault, hotkey: Self.hotkeyText, onPrimary: model.pickRootFolder,
                     onSecondary: { model.pasteNote() })
@@ -137,7 +140,9 @@ struct LibraryView: View {
                 // so the view showing it cannot stay on the stack.
                 model.path.removeAll()
             }
-        } else if isTopLevel, model.tree.count == 1, let only = model.tree.first {
+        } else if isTopLevel, model.tree.count == 1, let only = model.tree.first,
+            !model.isBuiltIn(only.url)
+        {
             Divider()
             Button("Detach \(only.name)", role: .destructive) {
                 model.removeRoot(only.url)

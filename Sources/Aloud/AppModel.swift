@@ -65,7 +65,18 @@ final class AppModel {
     /// when the last reference is already gone, so there is no second thread to race.
     @ObservationIgnored private nonisolated(unsafe) var terminateObserver: (any NSObjectProtocol)?
 
+    /// The folders the reader attached. The built-in notes folder is not among them:
+    /// it is `notesFolder`, and `allRoots` is what the vault and the watcher walk.
     var roots: [URL] = []
+    /// Aloud's own notes folder, made at init, or nil where it could not be made. The
+    /// home of a new note when none is chosen, and a root the library always shows.
+    let notesFolder: URL?
+    /// Every root the library walks: the built-in folder first, then the attached
+    /// ones, with the built-in path never counted twice should it also be attached.
+    var allRoots: [URL] {
+        guard let notesFolder else { return roots }
+        return [notesFolder] + roots.filter { $0.path != notesFolder.path }
+    }
     /// Every root whose bookmark will not resolve, which is what Settings names and
     /// offers to locate or remove. Each is addressed by its index in the store, since a
     /// migrated placeholder path names nothing.
@@ -133,17 +144,21 @@ final class AppModel {
     /// rather than at the reader's real vault.
     init(
         provider: any VoiceProvider, progress: ProgressStore = .standard(),
-        rootStore: RootStore = RootStore(), emptyPanelHold: Duration = .seconds(Motion.emptyPanelHold)
+        rootStore: RootStore = RootStore(), notesFolder: URL = NotesFolder.url,
+        emptyPanelHold: Duration = .seconds(Motion.emptyPanelHold)
     ) {
         self.emptyPanelHold = emptyPanelHold
         self.rootStore = rootStore
         self.player = Player(provider: provider)
         self.provider = provider
         self.progress = progress
+        self.notesFolder = NotesFolder.ensure(notesFolder)
         let loaded = rootStore.load()
         self.roots = loaded.urls
         self.unreachable = loaded.unreachable
-        self.vault = Vault(roots: loaded.urls)
+        var walked = loaded.urls
+        if let n = self.notesFolder { walked = [n] + walked.filter { $0.path != n.path } }
+        self.vault = Vault(roots: walked)
         if loaded.unresolved > 0 {
             let n = loaded.unresolved
             // The bookmarks are kept: the volume may simply be unmounted.
@@ -302,11 +317,37 @@ final class AppModel {
         }
     }
 
+    /// Attaching the built-in folder's own path is allowed and harmless: `allRoots`
+    /// counts it once, and the bookmark only grants what the app already has.
     func addRoot(_ url: URL) {
         roots = rootStore.add(url)
-        Task {
-            await vault.setRoots(roots); await refresh(); watch()
-        }
+        Task { await rescan() }
+    }
+
+    func isBuiltIn(_ url: URL) -> Bool { notesFolder?.path == url.path }
+
+    /// True while new notes go to Aloud's own folder, chosen or by default.
+    var usesBuiltInNotes: Bool { noteFolder.map(isBuiltIn) ?? false }
+
+    /// Settings' Change...: any folder becomes the home of new notes, a folder inside
+    /// iCloud Drive included, and is attached as a root if it is not under one already,
+    /// since a note has to be in the library to be opened once it is written.
+    func chooseNoteFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Save notes here"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if !allRoots.contains(where: { Paths.isInside(url.path, root: $0.path) }) { addRoot(url) }
+        setNoteFolder(url)
+    }
+
+    /// Settings' Use Aloud's Folder: the choice is cleared, and the default is the
+    /// built-in folder again.
+    func useBuiltInNotes() {
+        Defaults.noteFolderPath = nil
+        noteFolderPath = nil
     }
 
     /// Settings' Detach Folder, and the library's. The bookmark goes, its scoped access with
@@ -320,6 +361,7 @@ final class AppModel {
     /// paused and the document let go rather than left playing out of a folder the app
     /// no longer has permission to open.
     func removeRoot(_ url: URL) {
+        guard !isBuiltIn(url) else { return }
         let removed = "\(url.lastPathComponent) detached from Aloud. Its files were not touched."
         // Nothing being read under this root: the order does not matter, so it stays
         // the synchronous one.
@@ -358,7 +400,7 @@ final class AppModel {
     }
 
     private func rescan() async {
-        await vault.setRoots(roots)
+        await vault.setRoots(allRoots)
         await refresh()
         watch()
     }
@@ -421,7 +463,7 @@ final class AppModel {
         roots = loaded.urls
         unreachable = loaded.unreachable
         Task {
-            await vault.setRoots(roots)
+            await vault.setRoots(allRoots)
             await refresh()
             watch()
         }
@@ -472,14 +514,15 @@ final class AppModel {
     }
 
     /// The folder a new note lands in: the one that was chosen in Settings while it is
-    /// still under a root, and otherwise the first root.
+    /// still under a root, otherwise Aloud's own folder, and only where that could not
+    /// be made, the first attached root.
     var noteFolder: URL? {
         if let p = noteFolderPath,
-            roots.contains(where: { Paths.isInside(p, root: $0.path) })
+            allRoots.contains(where: { Paths.isInside(p, root: $0.path) })
         {
             return URL(fileURLWithPath: p)
         }
-        return roots.first
+        return notesFolder ?? roots.first
     }
 
     var extractOptions: ExtractOptions { ExtractOptions(skipCode: Defaults.skipCode) }
@@ -931,8 +974,8 @@ final class AppModel {
 
     private func watch() {
         watcher?.stop()
-        guard !roots.isEmpty else { return }
-        watcher = FolderWatcher(paths: roots) { [weak self] in
+        guard !allRoots.isEmpty else { return }
+        watcher = FolderWatcher(paths: allRoots) { [weak self] in
             Task { @MainActor in await self?.refresh() }
         }
     }

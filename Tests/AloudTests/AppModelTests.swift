@@ -19,8 +19,11 @@ import Vault
 @Suite @MainActor struct AppModelTests {
     /// A model that touches nothing of the reader's: no vault roots, since the root
     /// store is pointed at a throwaway suite, and no real progress file.
+    /// The built-in notes folder is the case's own directory unless a case says
+    /// otherwise, so a note written with no root attached lands where the case can see
+    /// it, and `addRoot(dir)` on the same path is one root, not two.
     func withModel(
-        emptyPanelHold: Duration = .seconds(1),
+        emptyPanelHold: Duration = .seconds(1), notesFolder: ((URL) -> URL)? = nil,
         _ body: (AppModel, URL) async throws -> Void
     ) async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -34,7 +37,8 @@ import Vault
         let model = AppModel(
             provider: FakeVoiceProvider(),
             progress: ProgressStore(file: dir.appendingPathComponent("progress.json")),
-            rootStore: RootStore(defaults: suite), emptyPanelHold: emptyPanelHold)
+            rootStore: RootStore(defaults: suite), notesFolder: notesFolder?(dir) ?? dir,
+            emptyPanelHold: emptyPanelHold)
         try await body(model, dir)
     }
 
@@ -166,12 +170,47 @@ import Vault
         }
     }
 
-    /// No folder to write into: the panel says so, and Play has nowhere to go.
+    /// No folder to write into, which takes a built-in folder that cannot be made:
+    /// the panel says so, and Play has nowhere to go.
     @Test func withNoFolderThePanelAsksForOne() async throws {
-        try await withModel { model, _ in
+        try await withModel(notesFolder: { dir in
+            let file = dir.appendingPathComponent("file")
+            try? "x".write(to: file, atomically: true, encoding: .utf8)
+            return file.appendingPathComponent("notes")
+        }) { model, _ in
+            #expect(model.noteFolder == nil)
             model.preview(clipboard: "Hello there.")
             #expect(model.clipboardPanel == .needsFolder(ClipboardPreview(text: "Hello there.")!))
             #expect(model.playPreview() == nil)
+        }
+    }
+
+    /// Nothing attached: a note still has a home, the built-in folder, and the
+    /// library sees it there as a root of its own.
+    @Test func withNoRootsANoteGoesToTheBuiltInFolder() async throws {
+        try await withModel(notesFolder: { $0.appendingPathComponent("Aloud Notes") }) {
+            (model: AppModel, dir: URL) async throws in
+            let notes = dir.appendingPathComponent("Aloud Notes")
+            #expect(model.roots.isEmpty)
+            #expect(model.noteFolder?.path == notes.path)
+            #expect(model.isBuiltIn(notes))
+            #expect(model.usesBuiltInNotes)
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
+            await model.playPreview()?.value
+            #expect(try FileManager.default.contentsOfDirectory(atPath: notes.path) == ["Hello there.md"])
+            #expect(model.current?.title == "Hello there.")
+            #expect(model.tree.map(\.url.path) == [notes.path])
+            #expect(model.currentSubtitle == "From clipboard")
+        }
+    }
+
+    /// The built-in folder is never a user root, so attaching its own path is one root.
+    @Test func attachingTheBuiltInFolderIsNotASecondRoot() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            #expect(model.allRoots.map(\.path) == [dir.path])
+            #expect(model.roots.map(\.path) == [dir.path])
         }
     }
 

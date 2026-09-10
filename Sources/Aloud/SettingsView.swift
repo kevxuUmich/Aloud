@@ -1,4 +1,5 @@
 import AloudUI
+import AppKit
 import KeyboardShortcuts
 import ServiceManagement
 import Speech
@@ -16,7 +17,39 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            // Where a new note lands. Aloud's own folder by default, so pasting works
+            // with nothing attached; any folder can take its place, one inside iCloud
+            // Drive included, which is how notes reach another Mac.
+            Section("Notes") {
+                LabeledContent("New notes are saved in") {
+                    Text(model.noteFolder?.lastPathComponent ?? "Nowhere: Aloud's folder could not be made")
+                        .foregroundStyle(Ink.soft)
+                }
+                HStack {
+                    Button("Change...") { model.chooseNoteFolder() }
+                    Button("Use Aloud's Folder") { model.useBuiltInNotes() }
+                        .disabled(model.usesBuiltInNotes || model.notesFolder == nil)
+                    Spacer()
+                    if let folder = model.noteFolder {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([folder])
+                        }
+                    }
+                }
+            }
             Section("Vault folders") {
+                if let notes = model.notesFolder {
+                    HStack {
+                        Text(notes.lastPathComponent)
+                        Text("Built in").font(Type.caption).foregroundStyle(Ink.soft)
+                        if model.usesBuiltInNotes {
+                            Text("New notes go here").font(Type.caption).foregroundStyle(Ink.soft)
+                        }
+                        Spacer()
+                        Button("Use for new notes") { model.useBuiltInNotes() }
+                            .disabled(model.usesBuiltInNotes)
+                    }
+                }
                 ForEach(model.roots, id: \.path) { url in
                     HStack {
                         Text(url.lastPathComponent)
