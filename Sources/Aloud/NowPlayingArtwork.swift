@@ -2,7 +2,7 @@ import AloudUI
 import AppKit
 import SwiftUI
 
-/// The Now Playing card's plate: the waveform in white on the accent colour, the
+/// The Now Playing card's plate: the mark in white on the accent colour, the
 /// same plate the clipboard panel draws. Rendered once at launch and handed to
 /// `NowPlaying`, so the card has a picture rather than a grey square.
 enum NowPlayingArtwork {
@@ -11,8 +11,7 @@ enum NowPlayingArtwork {
             .fill(Ink.plate)
             .frame(width: Size.clipboardPlate, height: Size.clipboardPlate)
             .overlay {
-                Image(systemName: "waveform")
-                    .resizable().scaledToFit()
+                ApertureGlyph()
                     .frame(width: Size.clipboardGlyph, height: Size.clipboardGlyph)
                     .foregroundStyle(Ink.plateGlyph)
             }

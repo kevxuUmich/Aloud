@@ -87,8 +87,7 @@ public struct ClipboardCard: View {
             .fill(Ink.plate)
             .frame(width: Size.clipboardPlate, height: Size.clipboardPlate)
             .overlay {
-                Image(systemName: "waveform")
-                    .resizable().scaledToFit()
+                ApertureGlyph()
                     .frame(width: Size.clipboardGlyph, height: Size.clipboardGlyph)
                     .foregroundStyle(Ink.plateGlyph)
             }

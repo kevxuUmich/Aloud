@@ -4,7 +4,7 @@ public struct Gallery: View {
     public static let sections = [
         "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
-        "ListRow", "VoiceRow", "ClipboardCard",
+        "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph",
     ]
     public init() {}
     public var body: some View {
@@ -109,6 +109,15 @@ public struct Gallery: View {
                             title: "It's been a fast year.", subtitle: "Pick a folder in Aloud first",
                             transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
                             onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                    }
+                }
+
+                section("ApertureGlyph") {
+                    HStack(spacing: Space.xl) {
+                        ApertureGlyph().frame(width: Size.icon, height: Size.icon)
+                        ApertureGlyph().frame(width: Size.control, height: Size.control)
+                        ApertureGlyph().frame(width: Size.landingGlyph, height: Size.landingGlyph)
+                            .foregroundStyle(Ink.landingGlyph)
                     }
                 }
             }

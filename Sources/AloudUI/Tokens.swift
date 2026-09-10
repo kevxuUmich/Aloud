@@ -48,6 +48,8 @@ public enum Size {
     public static let popoverHeight: CGFloat = 520
     /// The menu-bar panel: the popover's width, so the two read as one control.
     public static let panelWidth: CGFloat = 320
+    /// The menu bar's item: the mark at the height a symbol takes there.
+    public static let menuBarGlyph: CGFloat = 18
     /// The Settings window: wide enough for a folder's name, its two buttons and the
     /// hotkey recorder on one line, and no wider, since a Form's rows are labelled at
     /// the left and stretch would only push the controls away from their labels.
@@ -56,7 +58,7 @@ public enum Size {
     /// the Now Playing card's own proportions, so the two read as the same thing.
     public static let clipboardPanelWidth: CGFloat = 360
     public static let clipboardPlate: CGFloat = 88
-    /// The waveform inside the plate.
+    /// The mark inside the plate.
     public static let clipboardGlyph: CGFloat = 40
 }
 
@@ -74,7 +76,7 @@ public enum Ink {
     public static let thumbInk = Color.black
     /// The landing page's glyph: the accent, since it is the app's own mark there.
     public static let landingGlyph = Color.accentColor
-    /// The clipboard panel's plate: the accent, with the waveform in white on it.
+    /// The clipboard panel's plate: the accent, with the mark in white on it.
     public static let plate = Color.accentColor
     public static let plateGlyph = Color.white
 }
@@ -122,4 +124,20 @@ public enum Motion {
     /// How long the panel stays when the clipboard has no text: long enough to read
     /// two short lines, not long enough to reach for the mouse.
     public static let emptyPanelHold: Double = 1.6
+}
+
+/// The aperture mark: a ring on the superellipse shape law, open at the lower right.
+/// Four numbers describe it, taken from the mark's own SVG in a 96-point frame: the
+/// exponent of the law, the ring's box as a share of the frame, the stroke as a share
+/// of the frame, and half the opening in degrees, measured as a polar angle from the
+/// flat side that faces the lower-right diagonal.
+public enum Mark {
+    public static let exponent: CGFloat = 2.8
+    public static let body: CGFloat = 68.0 / 96.0
+    public static let stroke: CGFloat = 9.0 / 96.0
+    public static let gapHalfAngle: CGFloat = 13.6
+    /// How many straight pieces the outline is drawn with: one per degree.
+    public static let samples = 360
+    /// The turn that brings a flat side of the ring onto the lower-right diagonal.
+    public static let turnDegrees: CGFloat = 45
 }
