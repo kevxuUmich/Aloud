@@ -19,7 +19,7 @@ enum NoteWriteError: LocalizedError {
     case notFound, notOpened
     var errorDescription: String? {
         switch self {
-        case .notFound: "Could not save the note: it was written but could not be found"
+        case .notFound: "Could not save the note where Aloud can find it again"
         case .notOpened: "Saved the note, but could not open it"
         }
     }
@@ -698,22 +698,28 @@ final class AppModel {
 
     /// The name of the folder that holds a document, for the card's subtitle.
     ///
-    /// Matched on the resolved path, the way `document(at:)` matches and not on `id`:
-    /// a document the scanner did not build - the one restored at launch, made from a
-    /// path out of the progress store - can spell the same file `/var` where the scan
-    /// spells it `/private/var`, and comparing the two as written finds nothing.
+    /// Two passes, in the shape `document(at:)` has above. The straight `id` compare
+    /// answers for every document the scan itself built, which is all of them but one:
+    /// the document restored at launch is made from a path out of the progress store,
+    /// and can spell the file `/var` where `FileManager` spells it `/private/var`.
+    ///
+    /// The fallback is folders rather than documents: the one document's folder is
+    /// resolved once and matched against each folder's own URL, so the cost is a
+    /// resolve per folder and not per file in the library. That matters here more than
+    /// it does above, because this runs on the main actor from every `refresh` for as
+    /// long as the open document has no subtitle, and for a document whose root has
+    /// been detached that is the rest of the session.
     private func folderName(of doc: Document) -> String? {
-        let target = doc.url.resolvingSymlinksInPath().path
-        func find(_ folders: [Folder]) -> String? {
+        func find(_ folders: [Folder], _ matches: (Folder) -> Bool) -> String? {
             for f in folders {
-                if f.documents.contains(where: { $0.url.resolvingSymlinksInPath().path == target }) {
-                    return f.name
-                }
-                if let n = find(f.folders) { return n }
+                if matches(f) { return f.name }
+                if let n = find(f.folders, matches) { return n }
             }
             return nil
         }
-        return find(tree)
+        if let n = find(tree, { $0.documents.contains { $0.id == doc.id } }) { return n }
+        let parent = doc.url.deletingLastPathComponent().resolvingSymlinksInPath().path
+        return find(tree, { $0.url.resolvingSymlinksInPath().path == parent })
     }
 
     /// The file changed under the document being read: a save, a setting that changes
