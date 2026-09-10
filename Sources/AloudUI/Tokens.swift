@@ -48,6 +48,9 @@ public enum Size {
     public static let popoverHeight: CGFloat = 520
     /// The menu-bar panel: the popover's width, so the two read as one control.
     public static let panelWidth: CGFloat = 320
+    /// The volume slider in the transport bar: long enough to set a level by eye,
+    /// short enough to sit beside the speed without crowding it.
+    public static let volumeSlider: CGFloat = 88
     /// The menu bar's item: the mark at the height a symbol takes there.
     public static let menuBarGlyph: CGFloat = 18
     /// The Settings window: wide enough for a folder's name, its two buttons and the
@@ -58,8 +61,9 @@ public enum Size {
     /// the Now Playing card's own proportions, so the two read as the same thing.
     public static let clipboardPanelWidth: CGFloat = 360
     public static let clipboardPlate: CGFloat = 88
-    /// The mark inside the plate.
-    public static let clipboardGlyph: CGFloat = 40
+    /// The mark inside the plate: drawn in the plate's own frame, so the ring fills the
+    /// plate the way it fills the icon's tile, and the plate reads as the icon.
+    public static let clipboardGlyph: CGFloat = clipboardPlate
 }
 
 public enum Ink {
@@ -74,11 +78,15 @@ public enum Ink {
     public static let track = Color.secondary.opacity(0.3)
     public static let thumbPaper = Color.white
     public static let thumbInk = Color.black
-    /// The landing page's glyph: the accent, since it is the app's own mark there.
-    public static let landingGlyph = Color.accentColor
-    /// The clipboard panel's plate: the accent, with the mark in white on it.
-    public static let plate = Color.accentColor
-    public static let plateGlyph = Color.white
+    /// The mark's own colour, the icon's ring: the midpoint of its lit and shaded
+    /// edges, sampled from the 1024 export. The landing page and the plates draw the
+    /// mark in it; the menu bar takes the bar's tint instead.
+    public static let mark = Color(.sRGB, red: 0xED / 255.0, green: 0xDB / 255.0, blue: 0xEE / 255.0)
+    public static let landingGlyph = mark
+    /// The plates in the clipboard panel and on the Now Playing card: the icon's own
+    /// dark plate, with the mark in its own colour on it.
+    public static let plate = Color(.sRGB, red: 0x2A / 255.0, green: 0x2A / 255.0, blue: 0x2B / 255.0)
+    public static let plateGlyph = mark
 }
 
 public enum Type {
