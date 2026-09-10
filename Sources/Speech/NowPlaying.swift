@@ -23,6 +23,13 @@ public protocol RemoteCommands: AnyObject {
 /// The real Now Playing panel. The keys are spelled here rather than at the call
 /// site so a fake never has to know `MPMediaItemPropertyTitle`.
 public final class SystemNowPlayingCenter: NowPlayingCenter {
+    /// The last image wrapped, and its wrapper. A push lands on every sentence, and
+    /// the plate is the one image the app rendered at launch, so wrapping it again
+    /// each time would be a new object a second for the same picture. Identity rather
+    /// than equality: `NSImage` compares by reference, and the app hands over the same
+    /// instance every time.
+    private var lastImage: NSImage?
+    private var lastArtwork: MPMediaItemArtwork?
     public init() {}
     public func set(info: [String: Any]) {
         var mp: [String: Any] = [:]
@@ -32,10 +39,17 @@ public final class SystemNowPlayingCenter: NowPlayingCenter {
         if let e = info["elapsed"] { mp[MPNowPlayingInfoPropertyElapsedPlaybackTime] = e }
         if let r = info["rate"] { mp[MPNowPlayingInfoPropertyPlaybackRate] = r }
         if let image = info["artwork"] as? NSImage {
-            // The card asks for the size it wants and gets the one image whatever it asks.
-            mp[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            mp[MPMediaItemPropertyArtwork] = artwork(for: image)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = mp
+    }
+    /// The card asks for the size it wants and gets the one image whatever it asks.
+    private func artwork(for image: NSImage) -> MPMediaItemArtwork {
+        if let lastArtwork, lastImage === image { return lastArtwork }
+        let made = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        lastImage = image
+        lastArtwork = made
+        return made
     }
     public func set(playing: Bool) {
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused

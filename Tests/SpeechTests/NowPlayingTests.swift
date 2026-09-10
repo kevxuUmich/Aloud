@@ -64,6 +64,9 @@ import Testing
         np.update(title: nil, subtitle: nil)
         #expect(center.info["title"] as? String == "Aloud")
         #expect(center.info["subtitle"] == nil)
+        // The plate is the app's for the whole session: a document that clears the
+        // title and the subtitle must not clear the picture with them.
+        #expect(center.info["artwork"] as? NSImage === art)
     }
     /// The observation and the release below both land on their own schedule, so the
     /// suite waits for the condition rather than for a fixed sleep, which is either
