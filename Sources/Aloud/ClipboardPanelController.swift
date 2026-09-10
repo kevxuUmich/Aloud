@@ -57,6 +57,14 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         let host = NSHostingView(rootView: ClipboardPanelView(model: model, actions: actions))
         host.sizingOptions = [.intrinsicContentSize]
+        // The window's shadow is cut to the window's alpha, and glass does not leave
+        // the corners clear: its backdrop fills the whole frame, so the shadow came
+        // out as a rectangle with a hairline rim standing outside the rounded bar.
+        // Clipping the hosting view's layer to the bar's own radius makes the corners
+        // truly empty, and the shadow follows the glass.
+        host.wantsLayer = true
+        host.layer?.cornerRadius = Radius.l
+        host.layer?.masksToBounds = true
         panel.contentView = host
         observe()
     }
