@@ -10,16 +10,26 @@ import UniformTypeIdentifiers
 import Vault
 
 /// What can go wrong after a note's write lands on disk but before it is readable as
-/// the document it just became: `writeNote`'s two checks past the write itself. Both
-/// read as sentences, since they land on the panel's failure text and the window's
-/// notice unchanged.
+/// the document it just became: `writeNote`'s two checks past the write itself. Each
+/// spells the whole line rather than a clause, because they land on the panel's
+/// failure text and the window's notice unchanged and one of them is not a failed save
+/// at all: on `.notOpened` the note is on disk, and copy that opened with "Could not
+/// save the note" would tell the listener the opposite of what happened.
 enum NoteWriteError: LocalizedError {
     case notFound, notOpened
     var errorDescription: String? {
         switch self {
-        case .notFound: "the note was written but could not be found"
-        case .notOpened: "the note could not be opened"
+        case .notFound: "Could not save the note: it was written but could not be found"
+        case .notOpened: "Saved the note, but could not open it"
         }
+    }
+
+    /// The line a failed write leaves behind, on the panel and in the window alike.
+    /// Anything that is not one of the cases above is a save that did not land, so it
+    /// goes under the prefix that says so.
+    static func copy(for error: Error) -> String {
+        if let e = error as? NoteWriteError { return e.localizedDescription }
+        return "Could not save the note: \(error.localizedDescription)"
     }
 }
 
@@ -115,8 +125,9 @@ final class AppModel {
     private let emptyPanelHold: Duration
     /// What the Now Playing card says under the title for the document that is open:
     /// the folder's name, or "From clipboard" for a note the panel wrote. Kept so a
-    /// reload pushes the same line.
-    private var currentSubtitle: String?
+    /// reload pushes the same line, and readable so a test can check the line without
+    /// a Now Playing centre to read it back from.
+    private(set) var currentSubtitle: String?
 
     /// The root store is a parameter so a test can point it at its own defaults suite
     /// rather than at the reader's real vault.
@@ -224,7 +235,16 @@ final class AppModel {
     /// and the transport bar and the menu-bar item still carry the player.
     func preview(clipboard text: String?) {
         emptyHoldTask?.cancel()
-        guard let p = text.flatMap(ClipboardPreview.init(text:)) else {
+        let new = text.flatMap(ClipboardPreview.init(text:))
+        // The text the panel already shows is not a new preview, so the panel stays as
+        // it is and the write in the air, if there is one, still belongs to it.
+        if let new, clipboardPanel?.preview == new { return }
+        // Every path past here leaves the preview a Play belonged to, the empty
+        // clipboard as much as new text, so the write in the air is no longer the
+        // panel's: it is cancelled here rather than left to land on a card that is gone.
+        previewPlay?.cancel()
+        previewPlay = nil
+        guard let p = new else {
             clipboardPanel = .empty
             emptyHoldTask = Task { [weak self, emptyPanelHold] in
                 try? await Task.sleep(for: emptyPanelHold)
@@ -234,9 +254,6 @@ final class AppModel {
             }
             return
         }
-        if clipboardPanel?.preview == p { return }
-        previewPlay?.cancel()
-        previewPlay = nil
         clipboardPanel = noteFolder == nil ? .needsFolder(p) : .preview(p)
     }
 
@@ -249,7 +266,8 @@ final class AppModel {
         else { return nil }
         let task = Task {
             do {
-                try await writeNote(text: p.text, in: folder, andPlay: true)
+                try await writeNote(
+                    text: p.text, in: folder, andPlay: true, subtitle: "From clipboard")
                 // A stale task must never clear a live one: whichever of these guards
                 // fires belongs to a Play that is no longer the panel's, so it returns
                 // before `previewPlay = nil` below, leaving the live task's own slot alone.
@@ -257,8 +275,7 @@ final class AppModel {
                 clipboardPanel = .playing(p)
             } catch {
                 guard !Task.isCancelled, clipboardPanel?.preview == p else { return }
-                clipboardPanel = .preview(
-                    p, failure: "Could not save the note: \(error.localizedDescription)")
+                clipboardPanel = .preview(p, failure: NoteWriteError.copy(for: error))
             }
             previewPlay = nil
         }
@@ -511,9 +528,11 @@ final class AppModel {
         }
         return Task {
             do {
-                try await writeNote(text: text, in: folder, andPlay: andPlay)
+                // No subtitle: the window's paste is a document like any other, and its
+                // card carries the folder's name. "From clipboard" is the panel's line.
+                try await writeNote(text: text, in: folder, andPlay: andPlay, subtitle: nil)
             } catch {
-                notice = "Could not save the note: \(error.localizedDescription)"
+                notice = NoteWriteError.copy(for: error)
             }
         }
     }
@@ -522,14 +541,20 @@ final class AppModel {
     /// extracts in a task of its own, and a `play()` before it landed was a no-op on an
     /// empty player and, with another document loaded, a moment of the wrong one.
     ///
+    /// `subtitle` is what the Now Playing card says under the title, passed straight to
+    /// `open`: "From clipboard" for a note the panel wrote, and nil - the folder's name
+    /// - for the window's own Cmd+Shift+V, which is a gesture made inside Aloud.
+    ///
     /// A miss on either step below is thrown rather than shrugged off: a caller that
     /// swallowed it would take the success branch over a note that never opened, and
     /// the panel would show a mini player over nothing.
-    private func writeNote(text: String, in folder: URL, andPlay: Bool) async throws {
+    private func writeNote(
+        text: String, in folder: URL, andPlay: Bool, subtitle: String?
+    ) async throws {
         let url = try await vault.makeNote(text: text, in: folder)
         await refresh()
         guard let doc = document(at: url) else { throw NoteWriteError.notFound }
-        await open(doc, subtitle: "From clipboard").value
+        await open(doc, subtitle: subtitle).value
         if andPlay {
             guard current?.id == doc.id else { throw NoteWriteError.notOpened }
             player.play()
@@ -604,6 +629,20 @@ final class AppModel {
         scanned = true
         documents = allDocuments(in: tree)
         await followCurrentFile(evenWhileEditing: afterOwnSave)
+        nameTheOpenFolder()
+    }
+
+    /// The document restored at launch is loaded before the first scan lands, so
+    /// `folderName` had nothing to read and the card stood at the title alone for the
+    /// rest of the session: nothing else pushes it again. The first scan that can name
+    /// the folder pushes it, and only that one - a subtitle already set is left alone,
+    /// so a note the panel wrote keeps "From clipboard".
+    private func nameTheOpenFolder() {
+        guard let doc = current, currentSubtitle == nil, let folder = folderName(of: doc) else {
+            return
+        }
+        currentSubtitle = folder
+        nowPlaying?.update(title: doc.title, subtitle: folder)
     }
 
     /// The document being read changed on disk - saved in another editor, rewritten by
@@ -658,10 +697,18 @@ final class AppModel {
     }
 
     /// The name of the folder that holds a document, for the card's subtitle.
+    ///
+    /// Matched on the resolved path, the way `document(at:)` matches and not on `id`:
+    /// a document the scanner did not build - the one restored at launch, made from a
+    /// path out of the progress store - can spell the same file `/var` where the scan
+    /// spells it `/private/var`, and comparing the two as written finds nothing.
     private func folderName(of doc: Document) -> String? {
+        let target = doc.url.resolvingSymlinksInPath().path
         func find(_ folders: [Folder]) -> String? {
             for f in folders {
-                if f.documents.contains(where: { $0.id == doc.id }) { return f.name }
+                if f.documents.contains(where: { $0.url.resolvingSymlinksInPath().path == target }) {
+                    return f.name
+                }
                 if let n = find(f.folders) { return n }
             }
             return nil
@@ -900,8 +947,8 @@ final class AppModel {
             // The restored document never passes through `open`, so without this the
             // panel would say "Aloud" over a document the transport can already play.
             // `folderName` reads `tree`, which is usually empty here: `restoreLast` runs
-            // before the first scan lands, so the subtitle is nil until the next open or
-            // reload pushes the card again.
+            // before the first scan lands, so the subtitle is nil for now and the scan
+            // fills it in through `nameTheOpenFolder`.
             currentSubtitle = folderName(of: doc)
             nowPlaying?.update(title: doc.title, subtitle: currentSubtitle)
         }

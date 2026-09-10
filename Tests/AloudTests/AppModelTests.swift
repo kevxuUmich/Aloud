@@ -1,3 +1,4 @@
+import AloudUI
 import Foundation
 import Speech
 import Testing
@@ -284,6 +285,63 @@ import Vault
             #expect(model.current?.title == "Beta one.")
             #expect(model.player.script.source == "Beta one.")
             #expect(model.player.isPlaying)
+        }
+    }
+
+    /// The Now Playing card's second line. A document out of the library says which
+    /// folder it is in; a note the panel wrote says where it came from, and the
+    /// window's own paste is a document like any other.
+    @Test func theCardsSecondLineNamesTheFolderOrTheClipboard() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            // The folder's name is read off the tree, so the scan has to have landed.
+            try await poll { model.document(at: a.url) != nil }
+            await model.open(a).value
+            #expect(model.currentSubtitle == dir.lastPathComponent)
+            model.preview(clipboard: "Hello there.")
+            await model.playPreview()?.value
+            #expect(model.currentSubtitle == "From clipboard")
+            await model.pasteNote(text: "Gamma one.", andPlay: false)?.value
+            #expect(model.currentSubtitle == dir.lastPathComponent)
+        }
+    }
+
+    /// A restored document is loaded before the first scan lands, so its folder has no
+    /// name yet: the scan that can name it pushes the line, and nothing else would.
+    @Test func theFirstScanNamesTheFolderOfAnAlreadyOpenDocument() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            // Opened with no roots at all, which is where `restoreLast` leaves the model.
+            await model.open(a).value
+            #expect(model.current?.id == a.id)
+            #expect(model.currentSubtitle == nil)
+            model.addRoot(dir)
+            try await poll { model.currentSubtitle != nil }
+            #expect(model.currentSubtitle == dir.lastPathComponent)
+        }
+    }
+
+    /// The panel's copy in each state it can be in. The three are pure given a model,
+    /// so they are read straight off the view rather than through a window.
+    @Test func thePanelsCopyForEachState() async throws {
+        try await withModel { model, _ in
+            // The rate is a process-wide setting this suite does not swap, and the
+            // estimate is read at it, so the player is put at 1x for this one case.
+            model.player.rate = .x1
+            let view = ClipboardPanelView(model: model, actions: PanelActions())
+            let text = Array(repeating: "word", count: 320).joined(separator: " ")
+            let p = try #require(ClipboardPreview(text: text))
+            #expect(p.words == 320)
+            #expect(view.subtitle(for: .preview(p)) == "From clipboard · ~2 min · 320 words")
+            #expect(view.title(for: .empty) == "Nothing to read")
+            #expect(view.subtitle(for: .empty) == "The clipboard has no text")
+            #expect(view.subtitle(for: .needsFolder(p)) == "Pick a folder in Aloud first")
+            #expect(view.subtitle(for: .preview(p, failure: "x")) == "x")
+            #expect(view.transport(for: .empty) == ClipboardCard.Transport.disabled)
+            #expect(view.transport(for: .preview(p)) == ClipboardCard.Transport.ready)
+            #expect(view.transport(for: .needsFolder(p)) == ClipboardCard.Transport.ready)
+            #expect(view.transport(for: .playing(p)) == ClipboardCard.Transport.playing(isPlaying: false))
         }
     }
 }

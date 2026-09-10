@@ -67,17 +67,28 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     }
 
     /// `Observations` emits on every write to `model.clipboardPanel`, not only on the
-    /// flip between nil and not, so the presence is de-duplicated here: a preview
-    /// replaced by another preview, or a preview that starts playing, leaves the panel
-    /// where it is and only the view redraws.
+    /// flip between nil and not.
+    ///
+    /// A non-nil emission always re-asserts the panel, because `show()` is idempotent
+    /// in effect - it measures, places, installs the keys once and makes the panel key -
+    /// and because the stream coalesces: a dismiss and a fresh hotkey inside one turn
+    /// arrive as one non-nil emission, and a loop that de-duplicated on presence would
+    /// have left the panel unkeyed with the old card still on screen. Only the going
+    /// away is de-duplicated, since ordering out a panel that is already out would
+    /// churn every redraw a preview makes.
     private func observe() {
         observation = Task { [weak self] in
             var shown = false
             let stream = Observations { [weak self] in self?.model.clipboardPanel != nil }
-            for await now in stream where now != shown {
+            for await now in stream {
                 guard let self else { return }
-                shown = now
-                if now { self.show() } else { self.hide() }
+                if now {
+                    shown = true
+                    self.show()
+                } else if shown {
+                    shown = false
+                    self.hide()
+                }
             }
         }
     }
