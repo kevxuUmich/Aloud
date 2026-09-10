@@ -84,9 +84,14 @@ struct LibraryView: View {
         // the outside of the Group so it reaches the landing too: an empty vault is
         // exactly where pasting a note is the thing to do, and the paste bound to the
         // grid alone was a command that worked everywhere except where it was offered.
-        // The focus effect stays on: a keyboard user who lands on the container has to
-        // be able to see that the focus is there.
+        // No focus effect: the window hands first responder to this container the
+        // moment it opens, and SwiftUI rings a focused view whether the keyboard put
+        // it there or not, so every launch began with a blue rectangle around the
+        // content. The paste stays reachable without focus through the landing's
+        // button and Cmd+Shift+V, and a keyboard user tabbing through lands on the
+        // buttons, which draw their own rings.
         .focusable()
+        .focusEffectDisabled()
         .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
         .navigationTitle(title)
         .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "Search")
