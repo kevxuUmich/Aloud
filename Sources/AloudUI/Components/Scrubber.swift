@@ -6,6 +6,11 @@ public struct Scrubber: View {
     let elapsed: String
     let remaining: String
     let onSeek: (Double) -> Void
+    /// A `DragGesture` is not a control, so `.disabled` never reaches it: a scrubber
+    /// under a disabled transport would still seek. Read here and checked in the
+    /// gesture, so the panel's empty card and the transport bar with nothing loaded
+    /// both stay inert to a drag.
+    @Environment(\.isEnabled) private var isEnabled
     public init(
         progress: Double, elapsed: String, remaining: String, onSeek: @escaping (Double) -> Void
     ) {
@@ -25,6 +30,7 @@ public struct Scrubber: View {
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0).onEnded { v in
+                        guard isEnabled else { return }
                         onSeek(min(max(v.location.x / geo.size.width, 0), 1))
                     })
             }
