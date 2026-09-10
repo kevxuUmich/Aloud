@@ -1,7 +1,7 @@
 APP := .build/Aloud.app
 BIN := .build/debug/Aloud
 
-.PHONY: dev watch gallery build bundle test check clean
+.PHONY: dev watch gallery build bundle icon test check clean
 
 dev: build bundle
 	@pkill -x Aloud || true
@@ -21,6 +21,12 @@ bundle:
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	@cp $(BIN) $(APP)/Contents/MacOS/Aloud
 	@cp App/Info.plist $(APP)/Contents/Info.plist
+	@cp App/Aloud.icns $(APP)/Contents/Resources/Aloud.icns
+
+# The app icon, from the mark's 1024 export. The .icns is committed so the Xcode
+# target has it without a build step; run this again when the export changes.
+icon:
+	swift Tools/icon.swift $(CURDIR)
 
 # The command-line-tools-only toolchain ships Testing.framework outside the
 # default framework search path, and its Foundation cross-import overlay has no

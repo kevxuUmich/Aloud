@@ -22,6 +22,9 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Aloud
+      # The icon Info.plist names; a resource, so it lands in Contents/Resources.
+      - path: App/Aloud.icns
+        buildPhase: resources
     dependencies:
       - package: Aloud
         product: AloudUI
