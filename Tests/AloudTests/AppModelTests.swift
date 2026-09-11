@@ -135,6 +135,68 @@ import Vault
         }
     }
 
+    // MARK: Unloading and renaming
+
+    /// The X on the bar: the player falls silent and empty, nothing is loaded, and a
+    /// reader standing in that document is sent back to the library.
+    @Test func unloadClearsThePlayerAndLeavesTheReader() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            await model.open(a).value
+            model.player.play()
+            #expect(model.path.last == .reader(a))
+            model.unload()
+            #expect(model.current == nil)
+            #expect(model.currentSubtitle == nil)
+            #expect(!model.player.isPlaying)
+            #expect(model.player.script.sentences.isEmpty)
+            #expect(model.path.isEmpty)
+        }
+    }
+
+    /// Renaming the open note rewrites its title line, and the document the model
+    /// holds carries the new title without being reopened from the start.
+    @Test func renamingTheOpenNoteRetitlesItInPlace() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            let a = try document("# Old\n\nAlpha one. Alpha two.", named: "a.md", in: dir)
+            await model.open(a).value
+            model.player.seek(to: 1)
+            await model.rename(a, to: "New")
+            #expect(model.current?.title == "New")
+            #expect(try String(contentsOf: a.url, encoding: .utf8) == "# New\n\nAlpha one. Alpha two.")
+            try await poll { model.documents.first?.title == "New" }
+            #expect(model.documents.first?.title == "New")
+        }
+    }
+
+    /// A PDF's rename moves the file, so its progress and the route to it move too.
+    @Test func renamingAPDFCarriesItsProgressToTheNewPath() async throws {
+        try await withModel { model, dir in
+            let url = dir.appendingPathComponent("old.pdf")
+            try Data("%PDF".utf8).write(to: url)
+            let pdf = Document(
+                url: url, title: "old", preview: "", modified: .now, bytes: 4, type: .pdf)
+            model.progress.set(
+                PlaybackProgress(sentenceIndex: 7, finished: false, lastPlayed: .now), for: url)
+            await model.rename(pdf, to: "New")
+            let moved = dir.appendingPathComponent("New.pdf")
+            #expect(FileManager.default.fileExists(atPath: moved.path))
+            #expect(model.progress.progress(for: moved)?.sentenceIndex == 7)
+            #expect(model.progress.progress(for: url) == nil)
+        }
+    }
+
+    /// A name that cannot be taken is a notice, and the file is left as it was.
+    @Test func aFailedRenameIsANotice() async throws {
+        try await withModel { model, dir in
+            let a = try document("# Old", named: "a.md", in: dir)
+            await model.rename(a, to: "   ")
+            #expect(model.notice != nil)
+            #expect(try String(contentsOf: a.url, encoding: .utf8) == "# Old")
+        }
+    }
+
     // MARK: The clipboard panel
 
     /// The hotkey with text: a preview, and nothing on disk until Play.

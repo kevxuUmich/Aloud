@@ -16,6 +16,12 @@ extension View {
                         ? "Mark Unfinished" : "Mark Finished"
                 ) { model.toggleFinished(doc) }
                 Divider()
+                // Renaming is done in the reader, on the title itself: the menu opens
+                // the document and asks the title to start editing.
+                Button("Rename") {
+                    model.open(doc)
+                    model.renaming = doc
+                }
                 Button("Reveal in Finder") { model.reveal(doc) }
                 Button("Move to Trash", role: .destructive) { model.trash(doc) }
             }

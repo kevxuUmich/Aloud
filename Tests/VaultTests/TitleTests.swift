@@ -21,3 +21,23 @@ import Testing
         #expect(Title.from(text: long, fallback: "f").count <= 80)
     }
 }
+
+/// `Title.retitle` is the inverse of `Title.from`: whatever line `from` would read as
+/// the title is the line `retitle` replaces, so a renamed file reads back its new name.
+@Suite struct RetitleTests {
+    @Test func theFirstHeadingIsReplacedAtItsOwnLevel() {
+        let text = "---\na: b\n---\n\nintro line\n\n## Old\n\nbody\n"
+        #expect(
+            Title.retitle(text: text, to: "New") == "---\na: b\n---\n\nintro line\n\n## New\n\nbody\n")
+    }
+    @Test func theFirstLineIsReplacedWhenThereIsNoHeading() {
+        #expect(Title.retitle(text: "\n\nOld line\nmore", to: "New") == "\n\nNew\nmore")
+    }
+    @Test func anEmptyTextBecomesTheTitle() {
+        #expect(Title.retitle(text: "  \n", to: "New") == "New\n")
+    }
+    @Test func theNewTitleReadsBackThroughFrom() {
+        let text = "# Old\n\nbody"
+        #expect(Title.from(text: Title.retitle(text: text, to: "New"), fallback: "f") == "New")
+    }
+}

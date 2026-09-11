@@ -52,6 +52,17 @@ public final class ProgressStore: @unchecked Sendable {
         scheduleWrite()
     }
 
+    /// A renamed file keeps its place: the entry under the old path becomes the entry
+    /// under the new one. Nothing under the old path is a no-op.
+    public func move(from old: URL, to new: URL) {
+        let moved = lock.withLock { () -> Bool in
+            guard let p = table.removeValue(forKey: old.path) else { return false }
+            table[new.path] = p
+            return true
+        }
+        if moved { scheduleWrite() }
+    }
+
     public func lastPlayedPath() -> String? {
         lock.withLock { table.max { $0.value.lastPlayed < $1.value.lastPlayed }?.key }
     }

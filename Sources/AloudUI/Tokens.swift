@@ -3,6 +3,7 @@ import SwiftUI
 public enum Space {
     /// Rows that carry their own vertical padding stack flush.
     public static let none: CGFloat = 0
+    public static let xxs: CGFloat = 2
     public static let xs: CGFloat = 4
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
@@ -17,6 +18,7 @@ public enum Space {
 }
 
 public enum Radius {
+    public static let xs: CGFloat = 3
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
     public static let l: CGFloat = 20
@@ -34,6 +36,11 @@ public enum Size {
     public static let hairline: CGFloat = 1
     public static let cardWidth: CGFloat = 160
     public static let thumb = CGSize(width: 120, height: 150)
+    /// The card's picture of the file, shrunk to sit beside the title in the transport
+    /// bar: the same proportions at the height of the bar's caption row, so the bar
+    /// shows the file the library showed rather than a symbol standing in for it.
+    /// Like `thumb`, this is the text's frame; the paper adds its inset around it.
+    public static let barThumb = CGSize(width: 12, height: 16)
     public static let minWindow = CGSize(width: 720, height: 480)
     public static let readerMeasure: CGFloat = 680
     /// The measure plus the text container's inset on each side.
@@ -50,6 +57,10 @@ public enum Size {
     /// The volume slider in the transport bar: long enough to set a level by eye,
     /// short enough to sit beside the speed without crowding it.
     public static let volumeSlider: CGFloat = 88
+    /// The reader's title while it is being edited: a field wide enough for a title
+    /// of the length the scanner keeps, since a field sized to its text would jump
+    /// with every keystroke.
+    public static let titleField: CGFloat = 360
     /// The menu bar's item: the mark at the height a symbol takes there.
     public static let menuBarGlyph: CGFloat = 18
     /// The Settings window: wide enough for a folder's name, its two buttons and the
@@ -96,11 +107,18 @@ public enum Type {
     public static let landingTitle = Font.largeTitle.weight(.semibold)
     public static let landingBody = Font.title3
     public static let cardTitle = Font.callout.weight(.medium)
+    /// The reader's title in the toolbar, at the weight the toolbar draws a window's
+    /// own title, so the editable one reads as the title and not as a control.
+    public static let toolbarTitle = Font.headline
     public static let caption = Font.caption
     /// A badge's word or two: smaller than the caption, with weight to hold its capsule.
     public static let badge = Font.caption2.weight(.medium)
     public static let control = Font.body.weight(.medium)
     public static let thumb = Font.system(size: 3, design: .monospaced)
+    /// The bar's picture of the file is a fifth of the card's, and its type cannot
+    /// simply shrink with it: forty lines in twenty points is a grey wash. Eight lines
+    /// of dots, with paper showing between them, is what still reads as a page.
+    public static let barThumb = Font.system(size: 2, design: .monospaced)
     /// The five reader sizes, indexed by the A/A stepper.
     public static let readerSizes: [CGFloat] = [15, 17, 19, 22, 26]
     public static let readerDefaultIndex = 1

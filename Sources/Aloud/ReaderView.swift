@@ -59,8 +59,23 @@ struct ReaderView: View {
             }
             Spacer(minLength: .zero)
         }
+        // The window keeps the document's title for Cmd+` and Exposé; the toolbar's
+        // own copy is removed and the editable one below stands in its place.
         .navigationTitle(document.title)
+        .toolbar(removing: .title)
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                EditableTitle(
+                    title: document.title,
+                    requested: model.renaming?.id == document.id,
+                    onBegan: { model.renaming = nil }
+                ) { new in
+                    Task { await model.rename(document, to: new) }
+                }
+            }
+            // The title takes the room it needs and the actions keep to the trailing
+            // edge; without this the field and the actions were laid side by side.
+            ToolbarSpacer(.flexible)
             ToolbarItemGroup(placement: .primaryAction) {
                 // One glyph at the weight of its neighbours. The pair of symbols it
                 // replaces drew a tiny A beside a large one, which read as a dimmed

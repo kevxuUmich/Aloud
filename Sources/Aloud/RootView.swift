@@ -16,13 +16,24 @@ struct RootView: View {
                     }
                 }
         }
-        // The bar is always there, floating at the window's foot with a margin on
-        // its sides and its bottom: it is the app's one transport, and a control that
-        // appears only once something is loaded is a control nobody learns. It is the
-        // only bottom inset, so the library's scroll content ends above it.
+        // The bar floats at the window's foot, with a margin on its sides and its
+        // bottom, while something is loaded; with nothing to play there is nothing to
+        // control, and the X on the bar is what takes it away. It is the only bottom
+        // inset, so the library's scroll content ends above it.
+        //
+        // The animation is scoped to the inset's own container and not to the stack:
+        // a load lands in the same instant as the push to the reader, and an animation
+        // on the stack made that push a cross-fade, with the library showing through
+        // the reader while it ran.
         .safeAreaInset(edge: .bottom) {
-            TransportBarView(model: model)
-                .padding([.horizontal, .bottom], Space.barInset)
+            VStack(spacing: Space.none) {
+                if model.current != nil {
+                    TransportBarView(model: model)
+                        .padding([.horizontal, .bottom], Space.barInset)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.ease, value: model.current == nil)
         }
         .overlay(alignment: .top) {
             if let n = model.notice {

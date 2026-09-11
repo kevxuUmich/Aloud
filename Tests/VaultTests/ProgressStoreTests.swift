@@ -15,6 +15,17 @@ import Testing
         #expect(b.progress(for: url)?.sentenceIndex == 12)
         #expect(b.lastPlayedPath() == "/tmp/x.md")
     }
+    @Test func moveCarriesAnEntryToANewPath() {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString + ".json")
+        let store = ProgressStore(file: file)
+        let old = URL(fileURLWithPath: "/tmp/old.pdf")
+        let new = URL(fileURLWithPath: "/tmp/new.pdf")
+        store.set(PlaybackProgress(sentenceIndex: 3, finished: true, lastPlayed: .now), for: old)
+        store.move(from: old, to: new)
+        #expect(store.progress(for: old) == nil)
+        #expect(store.progress(for: new)?.sentenceIndex == 3)
+    }
     @Test func missingFileIsEmpty() {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString + ".json")

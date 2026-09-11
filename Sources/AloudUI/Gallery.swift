@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct Gallery: View {
     public static let sections = [
-        "GlassBar", "Card", "FolderCard", "IconButton", "TransportButton",
+        "GlassBar", "Card", "Thumb", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
         "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph", "VolumeControl",
     ]
@@ -26,6 +26,12 @@ public struct Gallery: View {
                             title: "Managing Agents, From First Principles", preview: Self.lorem,
                             status: "3:12 left")
                         Card(title: "Finished one", preview: Self.lorem, status: "Finished")
+                    }
+                }
+                section("Thumb") {
+                    HStack(alignment: .bottom, spacing: Space.xl) {
+                        Thumb(preview: Self.lorem, scale: .card)
+                        Thumb(preview: Self.lorem, scale: .bar)
                     }
                 }
                 section("FolderCard") {

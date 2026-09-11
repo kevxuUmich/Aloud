@@ -11,16 +11,8 @@ public struct Card: View {
     }
     public var body: some View {
         VStack(spacing: Space.s) {
-            // The preview is a picture of the file, unreadably small on purpose, so it
-            // is decoration; the label below carries the same words for a reader.
-            Text(preview)
-                .font(Type.thumb)
-                .foregroundStyle(Ink.thumbInk)
-                .frame(width: Size.thumb.width, height: Size.thumb.height, alignment: .topLeading)
-                .padding(Space.s)
-                .background(Ink.thumbPaper, in: .rect(cornerRadius: Radius.s))
-                .clipped()
-                .accessibilityHidden(true)
+            // The label below carries the picture's words for a reader.
+            Thumb(preview: preview, scale: .card)
             Text(title)
                 .font(Type.cardTitle)
                 .multilineTextAlignment(.center)

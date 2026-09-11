@@ -100,6 +100,10 @@ final class AppModel {
     var path: [Route] = []
     var current: Document?
     var notice: String?
+    /// The document a Rename… asked about. There is no dialog: the menu opens the
+    /// reader and sets this, and the reader's title takes it as its cue to begin
+    /// editing, then clears it.
+    var renaming: Document?
     /// The search field's text. Every edit restarts the debounced search below.
     var searchQuery = "" { didSet { search() } }
     /// The ids that match, or nil when the field is empty and the grid is itself.
@@ -844,6 +848,46 @@ final class AppModel {
     }
 
     func reveal(_ doc: Document) { NSWorkspace.shared.activateFileViewerSelecting([doc.url]) }
+
+    /// The X on the transport bar: the player is silenced and emptied, nothing is
+    /// loaded, and the bar says so. A reader standing in the document has nothing left
+    /// to stand in, so it goes back to the library. The place in the document is kept
+    /// in the progress store, as it is for every document that is closed.
+    func unload() {
+        guard let c = current else { return }
+        player.pause()
+        player.load(.empty, at: 0)
+        openGeneration += 1
+        current = nil
+        currentSubtitle = nil
+        nowPlaying?.update(title: nil, subtitle: nil)
+        if path.last == .reader(c) { path.removeLast() }
+    }
+
+    /// The title the library shows, changed: rewritten into the text of a note, or
+    /// the filename for a PDF. The document the model holds is swapped for the
+    /// renamed one, so the bar, the reader's route and the Now Playing card carry
+    /// the new title without a reload from the start; the text's own reload is the
+    /// tree's, as it is after any save. A PDF's progress follows the file to its new
+    /// path. A name that cannot be taken is a notice, and nothing moves.
+    func rename(_ doc: Document, to title: String) async {
+        do {
+            let renamed = try await vault.rename(doc, to: title)
+            if renamed.url != doc.url { progress.move(from: doc.url, to: renamed.url) }
+            if renamed.type != .pdf {
+                lastSavedText[renamed.url.path] = nil
+                await extraction.invalidate(renamed.url)
+            }
+            if current?.id == doc.id {
+                current = renamed
+                nowPlaying?.update(title: renamed.title, subtitle: currentSubtitle)
+            }
+            if let i = path.lastIndex(of: .reader(doc)) { path[i] = .reader(renamed) }
+            Task { await refresh(afterOwnSave: true) }
+        } catch {
+            notice = "Could not rename \(doc.title): \(error.localizedDescription)"
+        }
+    }
 
     func toggleFinished(_ doc: Document) {
         let p = progress.progress(for: doc.url)
