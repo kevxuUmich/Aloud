@@ -10,17 +10,16 @@ public enum Space {
     public static let xl: CGFloat = 24
     public static let xxl: CGFloat = 32
     public static let xxxl: CGFloat = 48
+    /// The margin around the floating transport bar: its sides and its bottom keep
+    /// this much of the window showing, so the bar reads as a plate on the page rather
+    /// than a shelf built into its edge.
+    public static let barInset: CGFloat = l
 }
 
 public enum Radius {
-    /// A corner that is not there: the two bottom corners of a bar docked to the
-    /// window's edge, which has no edge of its own to round against.
-    public static let none: CGFloat = 0
     public static let s: CGFloat = 8
     public static let m: CGFloat = 12
     public static let l: CGFloat = 20
-    /// The two top corners of the docked transport bar.
-    public static let dockedTop: CGFloat = l
     /// The glyph plate in the clipboard panel.
     public static let plate: CGFloat = m
 }

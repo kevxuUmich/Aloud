@@ -12,14 +12,14 @@ struct TransportBarView: View {
     /// and a drag that did that on every tick would stutter.
     @State private var draggedVolume: Double?
 
-    /// Nothing loaded: the bar is still there, docked and the width of the window, but
+    /// Nothing loaded: the bar is still there, floating at the window's foot, but
     /// the scrubber and the transport controls are disabled and the title slot says so.
     /// The scrubber reads 0:00 and ~0:00 on its own, since an empty timeline is zero
     /// long. The voice button is the exception, and stays live.
     var isLoaded: Bool { model.current != nil }
 
     var body: some View {
-        GlassBar(docked: true) {
+        GlassBar {
             VStack(spacing: Space.s) {
                 Scrubber(
                     progress: player.progress,

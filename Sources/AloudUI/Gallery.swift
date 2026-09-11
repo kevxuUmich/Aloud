@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct Gallery: View {
     public static let sections = [
-        "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
+        "GlassBar", "Card", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
         "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph", "VolumeControl",
     ]
@@ -12,15 +12,6 @@ public struct Gallery: View {
             VStack(alignment: .leading, spacing: Space.xxl) {
                 section("GlassBar") {
                     GlassBar {
-                        HStack(spacing: Space.l) {
-                            Text("Left")
-                            Spacer()
-                            Text("Right")
-                        }
-                    }
-                }
-                section("GlassBar docked") {
-                    GlassBar(docked: true) {
                         HStack(spacing: Space.l) {
                             Text("Left")
                             Spacer()

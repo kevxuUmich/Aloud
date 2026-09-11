@@ -16,12 +16,13 @@ struct RootView: View {
                     }
                 }
         }
-        // The bar is always there, flush to the window's bottom edge and the full
-        // width of it: it is the app's one transport, and a control that appears
-        // only once something is loaded is a control nobody learns. It is the only
-        // bottom inset, so the library's scroll content ends above it.
+        // The bar is always there, floating at the window's foot with a margin on
+        // its sides and its bottom: it is the app's one transport, and a control that
+        // appears only once something is loaded is a control nobody learns. It is the
+        // only bottom inset, so the library's scroll content ends above it.
         .safeAreaInset(edge: .bottom) {
             TransportBarView(model: model)
+                .padding([.horizontal, .bottom], Space.barInset)
         }
         .overlay(alignment: .top) {
             if let n = model.notice {
