@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MediaPlayer
 import Observation
@@ -22,14 +23,33 @@ public protocol RemoteCommands: AnyObject {
 /// The real Now Playing panel. The keys are spelled here rather than at the call
 /// site so a fake never has to know `MPMediaItemPropertyTitle`.
 public final class SystemNowPlayingCenter: NowPlayingCenter {
+    /// The last image wrapped, and its wrapper. A push lands on every sentence, and
+    /// the plate is the one image the app rendered at launch, so wrapping it again
+    /// each time would be a new object a second for the same picture. Identity rather
+    /// than equality: `NSImage` compares by reference, and the app hands over the same
+    /// instance every time.
+    private var lastImage: NSImage?
+    private var lastArtwork: MPMediaItemArtwork?
     public init() {}
     public func set(info: [String: Any]) {
         var mp: [String: Any] = [:]
         if let t = info["title"] { mp[MPMediaItemPropertyTitle] = t }
+        if let s = info["subtitle"] { mp[MPMediaItemPropertyArtist] = s }
         if let d = info["duration"] { mp[MPMediaItemPropertyPlaybackDuration] = d }
         if let e = info["elapsed"] { mp[MPNowPlayingInfoPropertyElapsedPlaybackTime] = e }
         if let r = info["rate"] { mp[MPNowPlayingInfoPropertyPlaybackRate] = r }
+        if let image = info["artwork"] as? NSImage {
+            mp[MPMediaItemPropertyArtwork] = artwork(for: image)
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = mp
+    }
+    /// The card asks for the size it wants and gets the one image whatever it asks.
+    private func artwork(for image: NSImage) -> MPMediaItemArtwork {
+        if let lastArtwork, lastImage === image { return lastArtwork }
+        let made = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        lastImage = image
+        lastArtwork = made
+        return made
     }
     public func set(playing: Bool) {
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
@@ -81,14 +101,19 @@ public final class SystemRemoteCommands: RemoteCommands {
 public final class NowPlaying {
     private let player: Player
     private let center: any NowPlayingCenter
+    /// One image for every document: the app renders it once at launch, and the card
+    /// shows a plate rather than a grey square.
+    private let artwork: NSImage?
     private var title: String?
+    private var subtitle: String?
     private var observation: Task<Void, Never>?
 
     public init(
-        player: Player, center: any NowPlayingCenter = SystemNowPlayingCenter(),
+        player: Player, artwork: NSImage? = nil, center: any NowPlayingCenter = SystemNowPlayingCenter(),
         commands: any RemoteCommands = SystemRemoteCommands()
     ) {
         self.player = player
+        self.artwork = artwork
         self.center = center
         commands.bind(
             play: { [weak self] in
@@ -116,8 +141,9 @@ public final class NowPlaying {
 
     deinit { observation?.cancel() }
 
-    public func update(title: String?) {
+    public func update(title: String?, subtitle: String?) {
         self.title = title
+        self.subtitle = subtitle
         push()
     }
 
@@ -126,12 +152,15 @@ public final class NowPlaying {
     /// write back into any observed property here would wake the loop that called it
     /// and spin forever. Nothing in this method may touch player state.
     private func push() {
-        center.set(info: [
+        var info: [String: Any] = [
             "title": title ?? "Aloud",
             "duration": player.timeline.total.seconds,
             "elapsed": player.elapsed.seconds,
             "rate": player.isPlaying ? player.rate.factor : 0,
-        ])
+        ]
+        if let subtitle { info["subtitle"] = subtitle }
+        if let artwork { info["artwork"] = artwork }
+        center.set(info: info)
         center.set(playing: player.isPlaying)
     }
 

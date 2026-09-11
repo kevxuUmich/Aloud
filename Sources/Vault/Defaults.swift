@@ -18,6 +18,21 @@ public enum Defaults {
         get { store.object(forKey: "rateFactor") as? Double }
         set { store.set(newValue, forKey: "rateFactor") }
     }
+    /// The pauses in seconds, nil until Settings writes one: the player's own
+    /// standard is the default, the way `rateFactor` leaves the rate's to the player.
+    public static var sentencePause: Double? {
+        get { store.object(forKey: "sentencePause") as? Double }
+        set { store.set(newValue, forKey: "sentencePause") }
+    }
+    public static var paragraphPause: Double? {
+        get { store.object(forKey: "paragraphPause") as? Double }
+        set { store.set(newValue, forKey: "paragraphPause") }
+    }
+    /// The player's level, nil until the slider is moved: full is the player's own default.
+    public static var volume: Double? {
+        get { store.object(forKey: "volume") as? Double }
+        set { store.set(newValue, forKey: "volume") }
+    }
     public static var skipCode: Bool {
         get { store.object(forKey: "skipCode") as? Bool ?? true }
         set { store.set(newValue, forKey: "skipCode") }

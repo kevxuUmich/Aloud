@@ -7,8 +7,10 @@ public protocol VoiceProvider: AnyObject, Sendable {
     /// read of `voices` asks the system again. A voice downloaded while the app was
     /// running is otherwise invisible until the app is restarted.
     func refreshVoices()
+    /// `pause` is the silence to leave after the text, before whatever is spoken next.
+    /// `volume` is the utterance's own level, 0 to 1, apart from the system's.
     @MainActor func speak(
-        _ text: String, voice: Voice?, rate: Rate,
+        _ text: String, voice: Voice?, rate: Rate, pause: Duration, volume: Double,
         onWord: @escaping @MainActor (NSRange) -> Void,
         onFinish: @escaping @MainActor () -> Void)
     @MainActor func stop()

@@ -15,7 +15,46 @@ public final class Player {
     public private(set) var finished = false
     public private(set) var timeline: Timeline
 
-    public var rate: Rate = .x1 { didSet { timeline = Timeline(script: script, rate: rate) } }
+    /// A change while speaking is heard now: the utterance in the air was queued at
+    /// the old rate and cannot be re-timed, so it is cut and the rest of the sentence,
+    /// from the word reached, is spoken again at the new one. The clock keeps the
+    /// share of the sentence already heard rather than the seconds, since a sentence
+    /// half spoken at 1x is still half spoken at 2x.
+    public var rate: Rate = .x1 {
+        didSet {
+            timeline = Timeline(script: script, rate: rate, pauses: pauses)
+            sentenceOffset = sentenceOffset * oldValue.factor / rate.factor
+            guard isPlaying else { return }
+            stopSpeaking()
+            speakCurrent(from: currentWordStart, offset: sentenceOffset)
+        }
+    }
+    /// The level the sentences are spoken at, 0 to 1, apart from the system volume.
+    /// A change while speaking is heard now, the way a rate change is: the utterance in
+    /// the air was queued at the old level, so the rest of the sentence is spoken again
+    /// from the word reached. The clock is untouched, since the timing has not changed.
+    ///
+    /// Computed over `level` rather than observed on itself: `@Observable` makes a
+    /// stored property an accessor pair, and a clamp written back from `didSet` would
+    /// re-enter the setter without end.
+    public var volume: Double {
+        get { level }
+        set {
+            let clamped = min(max(newValue, 0), Player.fullVolume)
+            guard clamped != level else { return }
+            level = clamped
+            guard isPlaying else { return }
+            stopSpeaking()
+            speakCurrent(from: currentWordStart, offset: sentenceOffset)
+        }
+    }
+    private var level = Player.fullVolume
+    public static let fullVolume = 1.0
+    /// The silences between sentences. A change is heard from the next sentence: the
+    /// one in the air keeps the pause it was queued with, which is a beat at most.
+    public var pauses: Pauses = .standard {
+        didSet { timeline = Timeline(script: script, rate: rate, pauses: pauses) }
+    }
     /// Assignment is where availability is settled, so a sentence never pays for the
     /// check and a voice that has gone is reported once rather than once a sentence.
     public var voice: Voice? { didSet { ensureVoiceIsInstalled() } }
@@ -26,16 +65,30 @@ public final class Player {
     /// fallen back to the system voice by the time this runs.
     public var onVoiceUnavailable: ((Voice) -> Void)?
 
+    /// How far into the current sentence the reading is, by the clock: the transport
+    /// reads its elapsed time and progress from this so they move second by second
+    /// rather than once a sentence. It runs from `sentenceAnchor` while playing,
+    /// clamped to the sentence's estimate so a slow synthesizer never shows the bar
+    /// past the sentence it is on, and holds still when paused.
+    public private(set) var sentenceOffset: Duration = .zero
+    /// The instant the current sentence's clock started, less any offset it resumed
+    /// with. Internal for the suite, which drives `tick(now:)` from it.
+    private(set) var sentenceAnchor: ContinuousClock.Instant?
+    private var ticker: Task<Void, Never>?
+    /// How often the clock is read while playing. Four times a second keeps a
+    /// once-a-second label from visibly lagging the second it turns.
+    static let tickInterval: Duration = .milliseconds(250)
+
     private let provider: any VoiceProvider
     private var generation = 0
 
     public init(provider: any VoiceProvider) {
         self.provider = provider
         self.voice = provider.defaultVoice
-        self.timeline = Timeline(script: .empty, rate: .x1)
+        self.timeline = Timeline(script: .empty, rate: .x1, pauses: .standard)
     }
 
-    public var elapsed: Duration { timeline.elapsed(at: sentenceIndex) }
+    public var elapsed: Duration { timeline.elapsed(at: sentenceIndex) + sentenceOffset }
     public var remaining: Duration { timeline.total - elapsed }
     public var progress: Double {
         timeline.total == .zero ? 0 : Timeline.seconds(elapsed) / Timeline.seconds(timeline.total)
@@ -51,10 +104,11 @@ public final class Player {
             generation += 1
         }
         self.script = script
-        timeline = Timeline(script: script, rate: rate)
+        timeline = Timeline(script: script, rate: rate, pauses: pauses)
         sentenceIndex = min(max(index, 0), max(script.sentences.count - 1, 0))
         finished = false
         wordRange = nil
+        resetClock()
     }
 
     public func play() {
@@ -77,6 +131,9 @@ public final class Player {
     public func pause() {
         stopSpeaking()
         isPlaying = false
+        // The offset is left where it is: a paused bar stays put. It restarts from
+        // zero on play, with the sentence.
+        stopTicking()
     }
 
     public func toggle() { isPlaying ? pause() : play() }
@@ -104,6 +161,7 @@ public final class Player {
         sentenceIndex = min(max(index, 0), max(script.sentences.count - 1, 0))
         finished = false
         wordRange = nil
+        resetClock()
         onSentence?(sentenceIndex)
         if wasPlaying { speakCurrent() }
     }
@@ -117,21 +175,33 @@ public final class Player {
         seek(to: timeline.index(at: elapsed + .seconds(seconds)))
     }
 
-    private func speakCurrent() {
+    /// Speaks the current sentence, or the rest of it from `from`. `offset` is where
+    /// the sentence's clock resumes: zero for a fresh sentence, and the share already
+    /// heard when a rate change re-speaks the rest of one.
+    private func speakCurrent(from: String.Index? = nil, offset: Duration = .zero) {
         guard sentenceIndex < script.sentences.count else { return }
         generation += 1
         let gen = generation
         let sentence = script.sentences[sentenceIndex]
+        let start = from ?? sentence.text.startIndex
+        // The word callbacks' ranges are in the text handed over, which is the whole
+        // sentence or its tail, so they are mapped through the tail's own start.
+        let spoken = String(sentence.text[start...])
+        let base = sentence.text.distance(from: sentence.text.startIndex, to: start)
+        sentenceOffset = offset
+        sentenceAnchor = .now - offset
+        startTicking()
+        let pause = script.endsParagraph(at: sentenceIndex) ? pauses.paragraph : pauses.sentence
         provider.speak(
-            sentence.text, voice: voice, rate: rate,
+            spoken, voice: voice, rate: rate, pause: pause, volume: volume,
             onWord: { [weak self] ns in
                 guard let self, gen == self.generation else { return }
-                if let r = Range(ns, in: sentence.text) {
+                if let r = Range(ns, in: spoken) {
                     let lo = self.script.source.index(
                         sentence.range.lowerBound,
-                        offsetBy: sentence.text.distance(from: sentence.text.startIndex, to: r.lowerBound))
+                        offsetBy: base + spoken.distance(from: spoken.startIndex, to: r.lowerBound))
                     let hi = self.script.source.index(
-                        lo, offsetBy: sentence.text.distance(from: r.lowerBound, to: r.upperBound))
+                        lo, offsetBy: spoken.distance(from: r.lowerBound, to: r.upperBound))
                     self.wordRange = lo..<hi
                 }
             },
@@ -141,17 +211,64 @@ public final class Player {
             })
     }
 
+    /// Where the current word starts within the current sentence's text, or nil before
+    /// the first word has been reported. `wordRange` is in the source; the sentence's
+    /// text is the slice of the source its range names, so the distance carries over.
+    private var currentWordStart: String.Index? {
+        guard let w = wordRange, sentenceIndex < script.sentences.count else { return nil }
+        let sentence = script.sentences[sentenceIndex]
+        guard w.lowerBound >= sentence.range.lowerBound, w.lowerBound < sentence.range.upperBound
+        else { return nil }
+        return sentence.text.index(
+            sentence.text.startIndex,
+            offsetBy: script.source.distance(from: sentence.range.lowerBound, to: w.lowerBound))
+    }
+
+    /// One reading of the clock. Public to the module so the suite can drive it
+    /// without waiting; the ticker calls it on the interval while playing.
+    func tick(now: ContinuousClock.Instant) {
+        guard let anchor = sentenceAnchor else { return }
+        sentenceOffset = min(now - anchor, timeline.duration(at: sentenceIndex))
+    }
+
+    private func startTicking() {
+        ticker?.cancel()
+        ticker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.tickInterval)
+                guard let self, !Task.isCancelled else { return }
+                self.tick(now: .now)
+            }
+        }
+    }
+
+    private func stopTicking() {
+        ticker?.cancel()
+        ticker = nil
+        sentenceAnchor = nil
+    }
+
+    /// The clock back to the start of a sentence: a load, a seek, or the next sentence.
+    private func resetClock() {
+        stopTicking()
+        sentenceOffset = .zero
+    }
+
     private func advance() {
         let next = sentenceIndex + 1
         if next < script.sentences.count {
             sentenceIndex = next
             wordRange = nil
+            resetClock()
             onSentence?(next)
             speakCurrent()
         } else {
             isPlaying = false
             finished = true
             wordRange = nil
+            // The bar reads full at the end, not a sentence short of it.
+            stopTicking()
+            sentenceOffset = timeline.duration(at: sentenceIndex)
             onFinished?()
         }
     }

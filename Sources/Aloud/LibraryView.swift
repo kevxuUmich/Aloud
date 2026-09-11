@@ -43,12 +43,15 @@ struct LibraryView: View {
     /// KeyboardShortcuts; the default is the one `Name.pasteAndPlay` ships with, for
     /// the case where the user has cleared the binding.
     @MainActor static var hotkeyText: String {
-        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Ctrl+Option+Space"
+        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Option+Space"
     }
 
     var body: some View {
         Group {
-            if model.roots.isEmpty {
+            // Nothing attached and nothing in Aloud's own folder: the first landing.
+            // The built-in folder is a root, so it is the documents that say whether
+            // there is anything to show, not the roots.
+            if model.roots.isEmpty, model.documents.isEmpty {
                 EmptyState(
                     kind: .noVault, hotkey: Self.hotkeyText, onPrimary: model.pickRootFolder,
                     onSecondary: { model.pasteNote() })
@@ -84,9 +87,14 @@ struct LibraryView: View {
         // the outside of the Group so it reaches the landing too: an empty vault is
         // exactly where pasting a note is the thing to do, and the paste bound to the
         // grid alone was a command that worked everywhere except where it was offered.
-        // The focus effect stays on: a keyboard user who lands on the container has to
-        // be able to see that the focus is there.
+        // No focus effect: the window hands first responder to this container the
+        // moment it opens, and SwiftUI rings a focused view whether the keyboard put
+        // it there or not, so every launch began with a blue rectangle around the
+        // content. The paste stays reachable without focus through the landing's
+        // button and Cmd+Shift+V, and a keyboard user tabbing through lands on the
+        // buttons, which draw their own rings.
         .focusable()
+        .focusEffectDisabled()
         .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
         .navigationTitle(title)
         .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "Search")
@@ -119,22 +127,24 @@ struct LibraryView: View {
         }
     }
 
-    /// Dropping the folder that is on screen. Inside a root it is that root; at the top
+    /// Detaching the folder that is on screen. Inside a root it is that root; at the top
     /// level it is the single root whose contents are being shown flattened, which has
     /// no card of its own to right-click. Anywhere else there is no one folder the menu
     /// could mean, and the roots' own cards carry the item instead.
     @ViewBuilder var removeFolderItem: some View {
         if let url = folderURL, model.roots.contains(where: { $0.path == url.path }) {
             Divider()
-            Button("Remove This Folder from Aloud", role: .destructive) {
+            Button("Detach This Folder", role: .destructive) {
                 model.removeRoot(url)
                 // The folder just stopped existing as far as the library is concerned,
                 // so the view showing it cannot stay on the stack.
                 model.path.removeAll()
             }
-        } else if isTopLevel, model.tree.count == 1, let only = model.tree.first {
+        } else if isTopLevel, model.tree.count == 1, let only = model.tree.first,
+            !model.isBuiltIn(only.url)
+        {
             Divider()
-            Button("Remove \(only.name) from Aloud", role: .destructive) {
+            Button("Detach \(only.name)", role: .destructive) {
                 model.removeRoot(only.url)
             }
         }

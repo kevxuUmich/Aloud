@@ -128,7 +128,7 @@ A grid of the current folder.
 - Cmd+V with no text field focused creates a note from the clipboard and opens it.
 - Cmd+Shift+V does the same from anywhere in the app, since bare Cmd+V reaches the library only when it has focus.
 - Right-click on a card: Play, Mark finished, Reveal in Finder, Delete (moves to Trash).
-- A vault folder is removed from the `+` menu while it is on screen, or by right-clicking its card at the top level, and only the link goes: its files are not touched.
+- A vault folder is detached from the `+` menu while it is on screen, or by right-clicking its card at the top level, and only the link goes: its files are not touched.
 - The empty landing fills the window: the waveform glyph, "Aloud", one sentence, the two buttons "Choose a folder" and "Paste from clipboard", and a hint that files can be dropped anywhere in the window and that the hotkey reads the clipboard from any app.
 - A vault that has been added but holds nothing readable shows the same landing with "Import files" in place of "Choose a folder".
 - The transport bar is there behind both landings, since it is the app's one transport and a control that appears only once something is loaded is a control nobody learns.
@@ -182,9 +182,9 @@ It is always present, from first launch onward; with nothing loaded the scrubber
 
 ### Settings
 
-Vault folders (add, remove, choose the default for new notes), default voice, default rate, hotkey, whether code blocks are skipped, launch at login, and whether the menu-bar item is shown.
+Vault folders (add, detach, choose the default for new notes), default voice, default rate, hotkey, whether code blocks are skipped, launch at login, and whether the menu-bar item is shown.
 
-A root whose bookmark will not resolve is listed by its last known path with Locate and Remove, rather than dropped, since the volume may only be unmounted.
+A root whose bookmark will not resolve is listed by its last known path with Locate and Detach Folder, rather than dropped, since the volume may only be unmounted.
 Launch at login is registered through `SMAppService` and takes effect only in the signed, bundled build.
 
 ## Data flow

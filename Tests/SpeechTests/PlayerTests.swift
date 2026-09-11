@@ -5,9 +5,13 @@ import Testing
 @testable import Speech
 
 @Suite @MainActor struct PlayerTests {
+    /// The fixture speaks with no pauses, so a sentence's slot is its words alone and
+    /// the clock arithmetic below reads straight off the word count. The pause test
+    /// builds its own.
     func make() -> (Player, FakeVoiceProvider) {
         let fake = FakeVoiceProvider()
         let p = Player(provider: fake)
+        p.pauses = .none
         let source = "One two three. Four five six. Seven eight nine. Ten eleven twelve."
         p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
         return (p, fake)
@@ -29,13 +33,130 @@ import Testing
         fake.finishCurrent()
         #expect(done); #expect(!p.isPlaying); #expect(p.finished)
     }
-    @Test func rateChangeAppliesAtTheNextSentence() {
+    /// A rate change while a sentence is being spoken is heard now, not at the next
+    /// sentence: the utterance in the air was queued at the old rate and cannot change,
+    /// so the player cuts it and speaks the rest of the sentence, from the word it had
+    /// reached, at the new one.
+    @Test func rateChangeRestartsTheSentenceFromTheCurrentWordAtTheNewRate() {
+        let (p, fake) = make()
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.rate = .x2
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.last?.text == "two three.")
+        #expect(fake.spoken.last?.rate == .x2)
+        #expect(p.sentenceIndex == 0)
+        #expect(p.isPlaying)
+        // The words of the rest still land in the source where they are.
+        fake.word(NSRange(location: 4, length: 5))
+        #expect(String(p.script.source[p.wordRange!]) == "three")
+        fake.finishCurrent()
+        #expect(p.sentenceIndex == 1)
+        #expect(fake.spoken.last?.text == "Four five six.")
+    }
+    /// The level reaches the provider with every sentence, full by default.
+    @Test func volumeReachesTheProvider() {
+        let (p, fake) = make()
+        p.play()
+        #expect(fake.spoken.last?.volume == 1)
+        fake.finishCurrent()
+        p.volume = 0.4
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.volume == 0.4)
+    }
+    /// A level change while a sentence is being spoken is heard now, the way a rate
+    /// change is: the rest of the sentence is spoken again from the word reached.
+    @Test func volumeChangeRestartsTheSentenceFromTheCurrentWord() {
+        let (p, fake) = make()
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.volume = 0.5
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.last?.text == "two three.")
+        #expect(fake.spoken.last?.volume == 0.5)
+        #expect(p.isPlaying)
+        p.pause()
+        p.volume = 0.2
+        #expect(fake.spoken.count == 2)
+    }
+    /// The level is clamped to what the synthesizer accepts.
+    @Test func volumeIsClampedToTheUnitRange() {
+        let (p, _) = make()
+        p.volume = 3
+        #expect(p.volume == 1)
+        p.volume = -1
+        #expect(p.volume == 0)
+    }
+    /// Before the first word there is nothing to resume from, so the whole sentence is
+    /// spoken again; and a change while paused waits for play, like any other.
+    @Test func rateChangeBeforeTheFirstWordSpeaksTheWholeSentence() {
         let (p, fake) = make()
         p.play()
         p.rate = .x2
-        #expect(fake.spoken.last?.rate == .x1)
+        #expect(fake.spoken.map(\.text) == ["One two three.", "One two three."])
+        p.pause()
+        p.rate = .x3
+        #expect(fake.spoken.count == 2)
+        p.play()
+        #expect(fake.spoken.last?.rate == .x3)
+    }
+    /// The clock within a sentence: elapsed runs from the sentence's start on the
+    /// timeline, and never past the sentence's own estimate, however long the
+    /// synthesizer takes.
+    @Test func elapsedRunsWithinTheSentenceAndStopsAtItsEstimate() {
+        let (p, fake) = make()
+        p.play()
+        let start = p.sentenceAnchor!
+        p.tick(now: start + .seconds(0.5))
+        #expect(abs(p.elapsed.seconds - 0.5) < 0.001)
+        p.tick(now: start + .seconds(60))
+        #expect(abs(p.elapsed.seconds - 1.125) < 0.001)
         fake.finishCurrent()
-        #expect(fake.spoken.last?.rate == .x2)
+        #expect(abs(p.elapsed.seconds - 1.125) < 0.001)
+        p.tick(now: p.sentenceAnchor! + .seconds(0.25))
+        #expect(abs(p.elapsed.seconds - 1.375) < 0.001)
+    }
+    /// Pausing holds the clock where it was; seeking and resuming start it again.
+    @Test func pauseHoldsTheClockAndPlayRestartsIt() {
+        let (p, _) = make()
+        p.play()
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        p.pause()
+        #expect(abs(p.elapsed.seconds - 0.5) < 0.001)
+        p.play()
+        #expect(p.elapsed == .zero)
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        p.seek(to: 2)
+        #expect(abs(p.elapsed.seconds - 2.25) < 0.001)
+    }
+    /// A rate change keeps the share of the sentence already heard: half a sentence at
+    /// 1x is still half a sentence at 2x, which is a quarter of the seconds.
+    @Test func rateChangeKeepsTheShareOfTheSentenceHeard() {
+        let (p, fake) = make()
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        p.rate = .x2
+        #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
+        #expect(abs(p.progress - 0.25 / 2.25) < 0.001)
+    }
+    /// Each utterance carries the silence to leave after it: the sentence pause, or
+    /// the paragraph pause where the sentence ends a paragraph. A change reaches the
+    /// next sentence without restarting the one in the air.
+    @Test func eachSentenceCarriesItsPause() {
+        let fake = FakeVoiceProvider()
+        let p = Player(provider: fake)
+        let source = "One two three.\n\nFour five six. Seven eight nine."
+        p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+        p.play()
+        #expect(fake.spoken.last?.pause == Pauses.standard.paragraph)
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.pause == Pauses.standard.sentence)
+        p.pauses = Pauses(sentence: .seconds(1), paragraph: .seconds(2))
+        #expect(fake.spoken.count == 2)
+        #expect(p.timeline.duration(at: 1) == .seconds(1.125) + .seconds(1))
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.pause == .seconds(1))
     }
     @Test func seekWhilePlayingRestartsAtTheTarget() {
         let (p, fake) = make()
@@ -46,7 +167,8 @@ import Testing
     }
     @Test func skipLandsOnASentenceBoundary() {
         let (p, _) = make()
-        // each 3-word sentence is 1.125 s at 1x; 15 s forward from 0 clamps to the last sentence
+        // each 3-word sentence is 1.125 s at 1x, plus its pause; 15 s forward from 0
+        // clamps to the last sentence
         p.skip(seconds: 15)
         #expect(p.sentenceIndex == 3)
         p.skip(seconds: -15)

@@ -21,16 +21,25 @@ struct AloudApp: App {
     static let mainWindowID = "main"
 
     @AppStorage("showMenuBar") private var showMenuBar = true
+    /// The reader's text size, shared with the reader through the one key, so the
+    /// View menu's steps and the toolbar's menu move the same setting.
+    @AppStorage(ReaderSize.key) private var readerSize = Type.readerDefaultIndex
 
     @State private var model: AppModel
+    /// The clipboard panel's owner, alive with the window closed: it is not a scene,
+    /// so it is made here beside the model rather than in the body.
+    @State private var clipboardPanel: ClipboardPanelController
 
     init() {
         if let file = Self.sayFile { Task { @MainActor in try? await Self.say(file) } }
-        _model = State(
-            initialValue: MainActor.assumeIsolated {
-                AppModel(
-                    provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
-            })
+        // One model, built into a local and handed to both: reading `_model.wrappedValue`
+        // in the second initialiser would capture a `self` that is not initialised yet.
+        let m = MainActor.assumeIsolated {
+            AppModel(
+                provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
+        }
+        _model = State(initialValue: m)
+        _clipboardPanel = State(initialValue: MainActor.assumeIsolated { ClipboardPanelController(model: m) })
     }
 
     var body: some Scene {
@@ -56,6 +65,14 @@ struct AloudApp: App {
                 Button("New Note from Clipboard") { model.pasteNote() }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
             }
+            CommandMenu("View") {
+                Button("Smaller Text") { readerSize = ReaderSize.smaller(readerSize) }
+                    .keyboardShortcut("-", modifiers: .command)
+                    .disabled(ReaderSize.clamp(readerSize) == 0)
+                Button("Larger Text") { readerSize = ReaderSize.larger(readerSize) }
+                    .keyboardShortcut("=", modifiers: .command)
+                    .disabled(ReaderSize.clamp(readerSize) == ReaderSize.last)
+            }
             CommandMenu("Playback") {
                 // Space, left and right are bare keys, so while the reader's editor has
                 // focus they would be typed characters and caret moves rather than
@@ -78,11 +95,10 @@ struct AloudApp: App {
         MenuBarExtra(isInserted: $showMenuBar) {
             MenuBarPanel(model: model)
         } label: {
-            Image(systemName: "waveform")
-                .symbolEffect(.variableColor.iterative, isActive: model.player.isPlaying)
-                // The hotkey on an empty clipboard: the window may be closed, so the
-                // glyph is the only place the miss can be reported.
-                .symbolEffect(.wiggle, value: model.shakeCount)
+            // The mark, as a template image so it takes the bar's tint. A drawn shape
+            // has no symbol effect, so the bar no longer pulses while playing; the panel
+            // under it says play or pause.
+            markLabel
                 .opacity(model.current == nil ? Motion.dimmed : 1)
                 .accessibilityLabel("Aloud")
         }
@@ -91,6 +107,15 @@ struct AloudApp: App {
         // Cmd+, and the app menu's Settings item come with the scene.
         Settings {
             SettingsView(model: model)
+        }
+    }
+
+    /// The rendered mark, with the symbol as a fallback should rendering fail.
+    @ViewBuilder private var markLabel: some View {
+        if let image = MarkImage.menuBar {
+            Image(nsImage: image)
+        } else {
+            Image(systemName: "waveform")
         }
     }
 

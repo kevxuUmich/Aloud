@@ -33,7 +33,7 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         cache.voices {
             AVSpeechSynthesisVoice.speechVoices().map {
                 Voice(
-                    id: $0.identifier, name: $0.name, language: $0.language,
+                    id: $0.identifier, name: Voice.bareName($0.name), language: $0.language,
                     quality: Quality(apple: $0.quality))
             }
         }
@@ -49,11 +49,13 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     }
 
     public func speak(
-        _ text: String, voice: Voice?, rate: Rate,
+        _ text: String, voice: Voice?, rate: Rate, pause: Duration, volume: Double,
         onWord: @escaping @MainActor (NSRange) -> Void, onFinish: @escaping @MainActor () -> Void
     ) {
         let u = AVSpeechUtterance(string: text)
         u.rate = rate.appleRate
+        u.volume = Float(volume)
+        u.postUtteranceDelay = pause.seconds
         if let id = voice?.id { u.voice = AVSpeechSynthesisVoice(identifier: id) }
         self.onWord = onWord
         self.onFinish = onFinish

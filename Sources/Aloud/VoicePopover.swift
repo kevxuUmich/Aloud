@@ -12,6 +12,9 @@ struct VoicePopover: View {
     /// Grouping the whole installed set is not work for every render, and the set can
     /// only change while the popover is shut, so it is done once, as it opens.
     @State private var groups: [VoiceGroup] = []
+    /// The handpicked list, each beside the installed voice it names or beside
+    /// nothing. Resolved with the groups, from the same read of the installed set.
+    @State private var recommended: [RecommendedEntry] = []
     @State private var query = ""
     @FocusState private var searchFocused: Bool
 
@@ -25,8 +28,49 @@ struct VoicePopover: View {
     /// opening asks the system again, which is cheap once and only once.
     private func load() {
         model.provider.refreshVoices()
-        groups = VoiceGroups.group(
-            model.provider.voices, currentLanguage: VoiceGroups.currentLanguage)
+        let voices = model.provider.voices
+        groups = VoiceGroups.group(voices, currentLanguage: VoiceGroups.currentLanguage)
+        recommended = RecommendedVoices.resolve(voices)
+    }
+
+    /// A voice that is not installed is picked in System Settings, where Apple keeps
+    /// the download; the popover can only take the reader there.
+    private func download() {
+        NSWorkspace.shared.open(Self.spokenContentSettings)
+    }
+
+    /// The handpicked list, above the language sections. A search is a search of the
+    /// installed set, and the list is not that, so it steps aside while the field has
+    /// text in it.
+    @ViewBuilder private var recommendedSection: some View {
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !recommended.isEmpty {
+            Section {
+                ForEach(recommended) { e in
+                    let r = e.recommendation
+                    VoiceRow(
+                        name: r.name, region: e.voice?.regionName ?? r.regionName,
+                        quality: r.quality.label, badge: r.sizeLabel,
+                        isSelected: e.voice != nil && e.voice?.id == model.player.voice?.id,
+                        isInstalled: e.isInstalled,
+                        onPreview: { if let v = e.voice { model.player.preview(v) } },
+                        onPick: {
+                            if let v = e.voice { model.pickVoice(v) } else { download() }
+                        })
+                }
+                // The note is for the reader who has none of them yet; once one is
+                // installed the arrow on the rest says enough on its own.
+                if !recommended.contains(where: \.isInstalled) {
+                    Text(Self.downloadNote)
+                        .font(Type.caption)
+                        .foregroundStyle(Ink.soft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                Text("Recommended")
+                    .font(Type.caption)
+                    .foregroundStyle(Ink.soft)
+            }
+        }
     }
 
     var body: some View {
@@ -45,6 +89,7 @@ struct VoicePopover: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Space.xs) {
+                    recommendedSection
                     ForEach(shown) { g in
                         Section {
                             ForEach(g.voices) { v in
@@ -87,6 +132,12 @@ struct VoicePopover: View {
             searchFocused = true
         }
     }
+
+    /// Shown under the recommended list while none of it is installed: the one
+    /// sentence that turns an arrow into a plan.
+    static let downloadNote =
+        "None of these are installed yet. Click one to download it free in System Settings, "
+        + "then come back here to pick it."
 
     static let spokenContentSettings = URL(
         string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent")!

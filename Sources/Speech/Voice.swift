@@ -24,3 +24,18 @@ public struct Voice: Identifiable, Hashable, Sendable {
         self.quality = quality
     }
 }
+
+extension Voice {
+    /// The name without the quality Apple appends in brackets: "Jamie" out of
+    /// "Jamie (Enhanced)". The row already prints the quality beside the name, so the
+    /// bracket would say it twice, and the recommended list matches on the bare name.
+    /// Only a quality is stripped: "Eddy (English (UK))" is a name with brackets of its
+    /// own, and stays whole.
+    public static func bareName(_ name: String) -> String {
+        for q in [Quality.enhanced, .premium] {
+            let suffix = " (\(q.label))"
+            if name.hasSuffix(suffix) { return String(name.dropLast(suffix.count)) }
+        }
+        return name
+    }
+}

@@ -5,12 +5,17 @@ public struct Timeline: Sendable {
     public let starts: [Duration]
     public let total: Duration
 
-    public init(script: Script, rate: Rate) {
+    /// The pause after each sentence is part of that sentence's slot, and the last
+    /// sentence has none: nothing follows it to pause before.
+    public init(script: Script, rate: Rate, pauses: Pauses) {
         var acc: Duration = .zero
         var starts: [Duration] = []
-        for s in script.sentences {
+        for (i, s) in script.sentences.enumerated() {
             starts.append(acc)
             acc += Estimate.duration(words: Estimate.words(in: s.text), factor: rate.factor)
+            if i + 1 < script.sentences.count {
+                acc += script.endsParagraph(at: i) ? pauses.paragraph : pauses.sentence
+            }
         }
         self.starts = starts
         self.total = acc
@@ -22,6 +27,14 @@ public struct Timeline: Sendable {
         var i = starts.count - 1
         while i > 0, starts[i] > time { i -= 1 }
         return i
+    }
+
+    /// The estimate for one sentence: the gap to the next start, or to the end.
+    public func duration(at index: Int) -> Duration {
+        guard !starts.isEmpty else { return .zero }
+        let i = min(max(index, 0), starts.count - 1)
+        let end = i + 1 < starts.count ? starts[i + 1] : total
+        return end - starts[i]
     }
 
     public func elapsed(at index: Int) -> Duration {

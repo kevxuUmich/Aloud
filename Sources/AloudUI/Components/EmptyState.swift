@@ -27,8 +27,7 @@ public struct EmptyState: View {
 
     public var body: some View {
         VStack(spacing: Space.xl) {
-            Image(systemName: "waveform")
-                .resizable().scaledToFit()
+            ApertureGlyph()
                 .frame(width: Size.landingGlyph, height: Size.landingGlyph)
                 .foregroundStyle(Ink.landingGlyph)
                 .accessibilityHidden(true)

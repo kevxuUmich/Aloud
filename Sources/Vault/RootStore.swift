@@ -110,7 +110,7 @@ public final class RootStore {
         resolved.removeAll { Self.key($0) == Self.key(url) }
     }
 
-    /// Settings' Remove on a root that will not resolve, addressed by its index in the
+    /// Settings' Detach Folder on a root that will not resolve, addressed by its index in the
     /// stored array because a placeholder path names nothing.
     public func remove(unreachableIndex index: Int) {
         let blobs = defaults.array(forKey: Self.key) as? [Data] ?? []

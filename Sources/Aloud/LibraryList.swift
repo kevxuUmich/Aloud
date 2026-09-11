@@ -37,11 +37,11 @@ struct LibraryList: View {
         } label: {
             ListRow(title: f.name, status: folderStatus(f), symbol: "folder.fill")
         }.buttonStyle(.plain)
-        if roots.isEmpty {
+        if roots.isEmpty || model.isBuiltIn(f.url) {
             row
         } else {
             row.contextMenu {
-                Button("Remove from Aloud", role: .destructive) { model.removeRoot(f.url) }
+                Button("Detach Folder", role: .destructive) { model.removeRoot(f.url) }
             }
         }
     }

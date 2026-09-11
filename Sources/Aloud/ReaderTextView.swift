@@ -21,6 +21,19 @@ struct ReaderTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
+        let scroll = Self.makeScrollView()
+        let tv = scroll.documentView as! ClickableTextView
+        tv.coordinator = context.coordinator
+        tv.delegate = context.coordinator
+        NotificationCenter.default.addObserver(
+            context.coordinator, selector: #selector(Coordinator.scrolled),
+            name: NSScrollView.willStartLiveScrollNotification, object: scroll)
+        return scroll
+    }
+
+    /// The scroll view and the text view inside it, without the coordinator, so the
+    /// suite can build the same stack and measure it.
+    static func makeScrollView() -> NSScrollView {
         let storage = NSTextStorage()
         let layout = NSLayoutManager()
         let container = NSTextContainer(
@@ -34,21 +47,54 @@ struct ReaderTextView: NSViewRepresentable {
         tv.autoresizingMask = [.width]
         tv.isVerticallyResizable = true
         tv.isHorizontallyResizable = false
+        // A text view's `maxSize` defaults to its frame, and the frame is whatever the
+        // scroll view first lays it out at - one screenful. Vertically resizable only
+        // means resizable up to that, so the document stopped at the first screen's
+        // height and the rest of the file was never reachable.
+        tv.minSize = .zero
+        tv.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         tv.isEditable = false
         tv.isSelectable = false
         tv.isRichText = false
         tv.drawsBackground = false
         tv.textContainerInset = NSSize(width: Space.xxl, height: Space.xxl)
-        tv.coordinator = context.coordinator
-        tv.delegate = context.coordinator
         tv.setAccessibilityRole(.staticText)
         scroll.documentView = tv
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
-        NotificationCenter.default.addObserver(
-            context.coordinator, selector: #selector(Coordinator.scrolled),
-            name: NSScrollView.willStartLiveScrollNotification, object: scroll)
         return scroll
+    }
+
+    /// The prose's attributes, and the blank line between paragraphs drawn at the
+    /// paragraph gap rather than at a line of prose's height. The source is the
+    /// script the sentences are indexed into, so the blank line stays in the text and
+    /// only its height changes. Returns the prose attributes, for the typing ones.
+    static func style(_ storage: NSTextStorage, fontSize: CGFloat) -> [NSAttributedString.Key: Any] {
+        let all = NSRange(location: 0, length: storage.length)
+        let font = NSFont.systemFont(ofSize: fontSize)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineHeightMultiple = Type.readerLineHeightMultiple
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .paragraphStyle: paragraph,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        storage.setAttributes(attributes, range: all)
+        let gap = NSMutableParagraphStyle()
+        gap.minimumLineHeight = fontSize * Type.readerParagraphGap
+        gap.maximumLineHeight = fontSize * Type.readerParagraphGap
+        // Of a "\n\n", the second newline is an empty paragraph of its own.
+        let text = storage.string as NSString
+        var at = 0
+        while at < text.length {
+            let r = text.range(of: "\n\n", range: NSRange(location: at, length: text.length - at))
+            guard r.location != NSNotFound else { break }
+            storage.addAttribute(
+                .paragraphStyle, value: gap, range: NSRange(location: r.location + 1, length: 1))
+            at = r.location + 2
+        }
+        return attributes
     }
 
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
@@ -70,19 +116,10 @@ struct ReaderTextView: NSViewRepresentable {
         let replaced = storage.length != all.length || tv.string != text
         if replaced { tv.string = text }
         if replaced || resized {
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.lineHeightMultiple = Type.readerLineHeightMultiple
-            paragraph.paragraphSpacing = fontSize
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: fontSize),
-                .paragraphStyle: paragraph,
-                .foregroundColor: NSColor.labelColor,
-            ]
             // Assigning `font` re-applies over the whole storage, so it is set only
-            // when the size actually changed.
+            // when the size actually changed, and before `style` lays its own over it.
             if resized { tv.font = NSFont.systemFont(ofSize: fontSize) }
-            storage.setAttributes(attributes, range: all)
-            tv.typingAttributes = attributes
+            tv.typingAttributes = Self.style(storage, fontSize: fontSize)
             co.appliedFontSize = fontSize
             // New text or a new size moves every line, so where we last scrolled to
             // says nothing about where the current sentence is now.

@@ -2,9 +2,9 @@ import SwiftUI
 
 public struct Gallery: View {
     public static let sections = [
-        "GlassBar", "GlassBar docked", "Card", "FolderCard", "IconButton", "TransportButton",
+        "GlassBar", "Card", "Thumb", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
-        "ListRow", "VoiceRow",
+        "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph", "VolumeControl",
     ]
     public init() {}
     public var body: some View {
@@ -19,15 +19,6 @@ public struct Gallery: View {
                         }
                     }
                 }
-                section("GlassBar docked") {
-                    GlassBar(docked: true) {
-                        HStack(spacing: Space.l) {
-                            Text("Left")
-                            Spacer()
-                            Text("Right")
-                        }
-                    }
-                }
                 section("Card") {
                     HStack(spacing: Space.xl) {
                         Card(title: "It's been a fast year.", preview: Self.lorem, status: "~8 min")
@@ -35,6 +26,12 @@ public struct Gallery: View {
                             title: "Managing Agents, From First Principles", preview: Self.lorem,
                             status: "3:12 left")
                         Card(title: "Finished one", preview: Self.lorem, status: "Finished")
+                    }
+                }
+                section("Thumb") {
+                    HStack(alignment: .bottom, spacing: Space.xl) {
+                        Thumb(preview: Self.lorem, scale: .card)
+                        Thumb(preview: Self.lorem, scale: .bar)
                     }
                 }
                 section("FolderCard") {
@@ -57,6 +54,13 @@ public struct Gallery: View {
                         TransportButton(.forward15) {}
                     }
                 }
+                section("VolumeControl") {
+                    HStack(spacing: Space.xl) {
+                        VolumeControl(volume: .constant(0), onCommit: {})
+                        VolumeControl(volume: .constant(0.5), onCommit: {})
+                        VolumeControl(volume: .constant(1), onCommit: {})
+                    }
+                }
                 section("RateButton") {
                     RateButton(label: "1x", all: ["0.75x", "1x", "1.25x"], onCycle: {}, onPick: { _ in })
                 }
@@ -64,11 +68,11 @@ public struct Gallery: View {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
                 }
                 section("EmptyState no vault") {
-                    EmptyState(kind: .noVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                    EmptyState(kind: .noVault, hotkey: "Option+Space", onPrimary: {}, onSecondary: {})
                 }
                 section("EmptyState empty vault") {
                     EmptyState(
-                        kind: .emptyVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                        kind: .emptyVault, hotkey: "Option+Space", onPrimary: {}, onSecondary: {})
                 }
                 section("Notice") { Notice("Voice not available, using the system default") }
                 section("ListRow") {
@@ -89,6 +93,42 @@ public struct Gallery: View {
                         VoiceRow(
                             name: "Majed", region: nil, quality: "Default",
                             isSelected: false, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Jamie", region: "United Kingdom", quality: "Enhanced",
+                            badge: "116 MB", isSelected: false, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Kate", region: "United Kingdom", quality: "Enhanced",
+                            badge: "50 MB", isSelected: false, isInstalled: false,
+                            onPreview: {}, onPick: {})
+                    }
+                }
+                section("ClipboardCard") {
+                    VStack(alignment: .leading, spacing: Space.l) {
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            transport: .playing(isPlaying: true), progress: 0.3, elapsed: "0:46",
+                            remaining: "~1:49", onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "Nothing to read", subtitle: "The clipboard has no text",
+                            transport: .disabled, progress: 0, elapsed: "0:00", remaining: "~0:00",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                        ClipboardCard(
+                            title: "It's been a fast year.", subtitle: "Pick a folder in Aloud first",
+                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
+                    }
+                }
+
+                section("ApertureGlyph") {
+                    HStack(spacing: Space.xl) {
+                        ApertureGlyph().frame(width: Size.icon, height: Size.icon)
+                        ApertureGlyph().frame(width: Size.control, height: Size.control)
+                        ApertureGlyph().frame(width: Size.landingGlyph, height: Size.landingGlyph)
+                            .foregroundStyle(Ink.landingGlyph)
                     }
                 }
             }

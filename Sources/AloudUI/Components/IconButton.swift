@@ -15,6 +15,10 @@ public struct IconButton: View {
     public var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
+                // A control's square, so the glyph has the same room on every side as
+                // its neighbours and the press lands anywhere in it.
+                .frame(width: Size.control, height: Size.control)
+                .contentShape(.rect)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
