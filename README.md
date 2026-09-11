@@ -16,6 +16,7 @@ There is a folder on your Mac that keeps growing.
 Meeting notes.
 Chat transcripts.
 Papers you saved for the weekend.
+Books with no audiobooks.
 The Markdown you wrote at midnight and never looked at again.
 
 Reading it takes a chair, a screen, and an hour you do not have.
