@@ -20,7 +20,7 @@ Pressing the hotkey in any app, window open or closed:
 The check reads only the files the text would have been named, the title's own name and its numbered siblings, and compares their whole contents, so a note edited since it was pasted is left as its own.
 The window's Cmd+Shift+V goes through the same path.
 - Enter or Space plays. Escape dismisses. A click anywhere outside dismisses. Dismissing before Play leaves nothing behind; dismissing after Play leaves the note and keeps playing, since the transport bar and the menu-bar item already carry the player.
-- The hotkey while the panel is open: if the clipboard's text differs from the previewed text, the preview swaps to the new text and the transport returns to the before-Play state without touching the current player. If it is the same text, the panel stays as it is. If the panel is already a player for that text, nothing changes.
+- The hotkey while the panel is open: if the clipboard's text differs from the previewed text, the preview swaps to the new text and the transport returns to the before-Play state without touching the current player. If it is the same text, the panel stays as it is. If the panel is already a player for that text, the panel stays and the reading pauses.
 - The hotkey after the panel was dismissed, with the played note's text still on the clipboard and the note still loaded: the panel comes back as the note's player, and the reading pauses.
 It is not a preview, which would say the note has not started and would write it a second time.
 Different text is a preview, as above, and the player is left alone.

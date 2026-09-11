@@ -341,17 +341,23 @@ import Vault
         }
     }
 
-    /// The same text again changes nothing, whether previewing or playing.
-    @Test func theSameTextAgainIsANoOp() async throws {
+    /// The same text again leaves the panel as it is: a preview stays a preview, and
+    /// the player stays the player, though the hotkey pauses it. Once paused, the
+    /// hotkey again leaves it paused: Space is the toggle, the hotkey is the stop.
+    @Test func theSameTextAgainKeepsThePanelAndPausesThePlayer() async throws {
         try await withModel { model, dir in
             model.addRoot(dir)
             model.preview(clipboard: "Hello there.")
             model.preview(clipboard: "Hello there.")
             #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
             await model.playPreview()?.value
+            #expect(model.player.isPlaying)
             model.preview(clipboard: " Hello there.\n")
             #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
-            #expect(model.player.isPlaying)
+            #expect(!model.player.isPlaying)
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(!model.player.isPlaying)
         }
     }
 

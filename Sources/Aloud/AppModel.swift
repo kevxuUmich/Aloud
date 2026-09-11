@@ -268,13 +268,17 @@ final class AppModel {
     /// The text of the note the panel played, with that note still loaded, is not a
     /// new preview either, however the panel was dismissed in between: the panel
     /// comes back as the note's player, and the hotkey pauses the reading, since from
-    /// another app it is the one key that reaches the player at all.
+    /// another app it is the one key that reaches the player at all. It pauses the
+    /// same with the panel still up: the hotkey is the stop, and Space is the toggle.
     func preview(clipboard text: String?) {
         emptyHoldTask?.cancel()
         let new = text.flatMap(ClipboardPreview.init(text:))
         // The text the panel already shows is not a new preview, so the panel stays as
         // it is and the write in the air, if there is one, still belongs to it.
-        if let new, clipboardPanel?.preview == new { return }
+        if let new, clipboardPanel?.preview == new {
+            if case .playing? = clipboardPanel { player.pause() }
+            return
+        }
         // Every path past here leaves the preview a Play belonged to, the empty
         // clipboard as much as new text, so the write in the air is no longer the
         // panel's: it is cancelled here rather than left to land on a card that is gone.
