@@ -9,6 +9,8 @@ import SwiftUI
 struct ReaderTextView: NSViewRepresentable {
     var text: String
     var fontSize: CGFloat
+    /// The prose's design, sans or serif; the size and this together are the font.
+    var design: NSFontDescriptor.SystemDesign = .default
     var sentence: NSRange?
     var word: NSRange?
     var follow: Bool
@@ -70,9 +72,11 @@ struct ReaderTextView: NSViewRepresentable {
     /// paragraph gap rather than at a line of prose's height. The source is the
     /// script the sentences are indexed into, so the blank line stays in the text and
     /// only its height changes. Returns the prose attributes, for the typing ones.
-    static func style(_ storage: NSTextStorage, fontSize: CGFloat) -> [NSAttributedString.Key: Any] {
+    static func style(
+        _ storage: NSTextStorage, fontSize: CGFloat, design: NSFontDescriptor.SystemDesign = .default
+    ) -> [NSAttributedString.Key: Any] {
         let all = NSRange(location: 0, length: storage.length)
-        let font = NSFont.systemFont(ofSize: fontSize)
+        let font = Self.font(size: fontSize, design: design)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineHeightMultiple = Type.readerLineHeightMultiple
         let attributes: [NSAttributedString.Key: Any] = [
@@ -97,6 +101,14 @@ struct ReaderTextView: NSViewRepresentable {
         return attributes
     }
 
+    /// The system font in the given design. A design the system cannot supply, which
+    /// none of the reader's are, leaves the plain system font rather than nothing.
+    static func font(size: CGFloat, design: NSFontDescriptor.SystemDesign) -> NSFont {
+        let plain = NSFont.systemFont(ofSize: size)
+        guard design != .default, let d = plain.fontDescriptor.withDesign(design) else { return plain }
+        return NSFont(descriptor: d, size: size) ?? plain
+    }
+
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(
             coordinator, name: NSScrollView.willStartLiveScrollNotification, object: scroll)
@@ -112,15 +124,16 @@ struct ReaderTextView: NSViewRepresentable {
         let all = NSRange(location: 0, length: (text as NSString).length)
         // The size is cached rather than read back off `tv.font`, and the length is
         // compared before the string: both of these run on every spoken word.
-        let resized = co.appliedFontSize != fontSize
+        let resized = co.appliedFontSize != fontSize || co.appliedDesign != design
         let replaced = storage.length != all.length || tv.string != text
         if replaced { tv.string = text }
         if replaced || resized {
             // Assigning `font` re-applies over the whole storage, so it is set only
-            // when the size actually changed, and before `style` lays its own over it.
-            if resized { tv.font = NSFont.systemFont(ofSize: fontSize) }
-            tv.typingAttributes = Self.style(storage, fontSize: fontSize)
+            // when the font actually changed, and before `style` lays its own over it.
+            if resized { tv.font = Self.font(size: fontSize, design: design) }
+            tv.typingAttributes = Self.style(storage, fontSize: fontSize, design: design)
             co.appliedFontSize = fontSize
+            co.appliedDesign = design
             // New text or a new size moves every line, so where we last scrolled to
             // says nothing about where the current sentence is now.
             co.lastScrolledTo = nil
@@ -177,6 +190,7 @@ struct ReaderTextView: NSViewRepresentable {
         var programmatic = false
         var wasFollowing = false
         var appliedFontSize: CGFloat?
+        var appliedDesign: NSFontDescriptor.SystemDesign?
         init(_ p: ReaderTextView) { parent = p }
         @objc func scrolled() { if !programmatic { parent.onUserScroll() } }
         func textDidChange(_ n: Notification) {

@@ -9,6 +9,8 @@ struct ReaderView: View {
     var document: Document
     var bookmarked: Bool { model.isBookmarked(document) }
     @AppStorage(ReaderSize.key) private var sizeIndex = Type.readerDefaultIndex
+    @AppStorage(ReaderTypeface.key) private var typefaceRaw = ReaderTypeface.standard.rawValue
+    @AppStorage(Appearance.key) private var appearanceRaw = Appearance.standard.rawValue
     @State private var follow = true
     @State private var editing = false
     @State private var draft = ""
@@ -22,6 +24,7 @@ struct ReaderView: View {
     var player: Player { model.player }
     var isCurrent: Bool { model.current?.id == document.id }
     var stepIndex: Int { ReaderSize.clamp(sizeIndex) }
+    var typeface: ReaderTypeface { ReaderTypeface.stored(typefaceRaw) }
 
     var body: some View {
         HStack {
@@ -35,6 +38,7 @@ struct ReaderView: View {
                 ReaderTextView(
                     text: editing ? draft : player.script.source,
                     fontSize: Type.readerSizes[stepIndex],
+                    design: typeface.design,
                     sentence: isCurrent
                         ? nsRange(player.script.sentences[safe: player.sentenceIndex]?.range) : nil,
                     word: isCurrent ? nsRange(player.wordRange) : nil,
@@ -78,15 +82,26 @@ struct ReaderView: View {
             // edge; without this the field and the actions were laid side by side.
             ToolbarSpacer(.flexible)
             ToolbarItemGroup(placement: .primaryAction) {
-                // One glyph at the weight of its neighbours. The pair of symbols it
-                // replaces drew a tiny A beside a large one, which read as a dimmed
-                // button next to a live one. The sizes are the menu's, with the two
-                // steps the View menu also carries.
+                // The reader's one menu, under one glyph at the weight of its
+                // neighbours: the sizes, the typeface and the appearance as three inline
+                // groups, then the two size steps the View menu also carries. The pair
+                // of symbols the glyph replaces drew a tiny A beside a large one, which
+                // read as a dimmed button next to a live one.
                 Menu {
                     Picker("Text size", selection: $sizeIndex) {
                         ForEach(Type.readerSizes.indices, id: \.self) { i in
                             Text(ReaderSize.name(i)).tag(i)
                         }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Picker("Typeface", selection: $typefaceRaw) {
+                        ForEach(ReaderTypeface.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Picker("Appearance", selection: $appearanceRaw) {
+                        ForEach(Appearance.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
                     }
                     .pickerStyle(.inline)
                     Divider()
@@ -100,8 +115,8 @@ struct ReaderView: View {
                     Image(systemName: "textformat.size")
                 }
                 .menuIndicator(.hidden)
-                .accessibilityLabel("Text size")
-                .help("Text size")
+                .accessibilityLabel("Reading options")
+                .help("Text size, typeface and appearance")
                 // Editing shows the file as it is written, Markdown and all, and
                 // writes it back verbatim. A PDF has no source to edit.
                 IconButton(editing ? "checkmark" : "pencil", label: editButtonLabel) {
