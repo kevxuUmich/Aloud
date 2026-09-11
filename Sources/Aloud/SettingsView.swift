@@ -97,7 +97,13 @@ struct SettingsView: View {
                             model.provider.voices, currentLanguage: VoiceGroups.currentLanguage)
                     ) { group in
                         Section(group.name) {
-                            ForEach(group.voices) { v in Text(v.name).tag(v.id) }
+                            // The names alone would show one "Jamie" for each quality
+                            // installed, so any quality above the default is spelled out.
+                            ForEach(group.voices) { v in
+                                Text(
+                                    v.quality == .standard ? v.name : "\(v.name) (\(v.quality.label))"
+                                ).tag(v.id)
+                            }
                         }
                     }
                 }

@@ -43,7 +43,7 @@ struct LibraryView: View {
     /// KeyboardShortcuts; the default is the one `Name.pasteAndPlay` ships with, for
     /// the case where the user has cleared the binding.
     @MainActor static var hotkeyText: String {
-        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Ctrl+Option+Space"
+        KeyboardShortcuts.getShortcut(for: .pasteAndPlay)?.description ?? "Option+Space"
     }
 
     var body: some View {

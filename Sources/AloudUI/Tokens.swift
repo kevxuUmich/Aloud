@@ -76,6 +76,8 @@ public enum Ink {
     public static let nsHighlightSentence = NSColor.controlAccentColor.withAlphaComponent(0.18)
     public static let nsHighlightWord = NSColor.controlAccentColor.withAlphaComponent(0.45)
     public static let track = Color.secondary.opacity(0.3)
+    /// The plate under a badge's text: the accent, faint enough to sit inside a row.
+    public static let badge = Color.accentColor.opacity(0.12)
     public static let thumbPaper = Color.white
     public static let thumbInk = Color.black
     /// The mark's own colour, the icon's ring: the midpoint of its lit and shaded
@@ -96,6 +98,8 @@ public enum Type {
     public static let landingBody = Font.title3
     public static let cardTitle = Font.callout.weight(.medium)
     public static let caption = Font.caption
+    /// A badge's word or two: smaller than the caption, with weight to hold its capsule.
+    public static let badge = Font.caption2.weight(.medium)
     public static let control = Font.body.weight(.medium)
     public static let thumb = Font.system(size: 3, design: .monospaced)
     /// The five reader sizes, indexed by the A/A stepper.

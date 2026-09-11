@@ -33,7 +33,7 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         cache.voices {
             AVSpeechSynthesisVoice.speechVoices().map {
                 Voice(
-                    id: $0.identifier, name: $0.name, language: $0.language,
+                    id: $0.identifier, name: Voice.bareName($0.name), language: $0.language,
                     quality: Quality(apple: $0.quality))
             }
         }

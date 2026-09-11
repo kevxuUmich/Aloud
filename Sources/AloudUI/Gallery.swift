@@ -71,11 +71,11 @@ public struct Gallery: View {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
                 }
                 section("EmptyState no vault") {
-                    EmptyState(kind: .noVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                    EmptyState(kind: .noVault, hotkey: "Option+Space", onPrimary: {}, onSecondary: {})
                 }
                 section("EmptyState empty vault") {
                     EmptyState(
-                        kind: .emptyVault, hotkey: "Ctrl+Option+Space", onPrimary: {}, onSecondary: {})
+                        kind: .emptyVault, hotkey: "Option+Space", onPrimary: {}, onSecondary: {})
                 }
                 section("Notice") { Notice("Voice not available, using the system default") }
                 section("ListRow") {
@@ -96,6 +96,13 @@ public struct Gallery: View {
                         VoiceRow(
                             name: "Majed", region: nil, quality: "Default",
                             isSelected: false, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Jamie", region: "United Kingdom", quality: "Enhanced",
+                            badge: "116 MB", isSelected: false, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Kate", region: "United Kingdom", quality: "Enhanced",
+                            badge: "50 MB", isSelected: false, isInstalled: false,
+                            onPreview: {}, onPick: {})
                     }
                 }
                 section("ClipboardCard") {
