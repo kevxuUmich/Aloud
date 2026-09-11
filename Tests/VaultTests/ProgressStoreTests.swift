@@ -15,6 +15,26 @@ import Testing
         #expect(b.progress(for: url)?.sentenceIndex == 12)
         #expect(b.lastPlayedPath() == "/tmp/x.md")
     }
+    /// A bookmark is kept with the place, and a file written before there were
+    /// bookmarks still reads: the flag is simply off.
+    @Test func aBookmarkRoundTripsAndAnOldFileReadsWithoutOne() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString + ".json")
+        let url = URL(fileURLWithPath: "/tmp/x.md")
+        let a = ProgressStore(file: file)
+        a.set(
+            PlaybackProgress(sentenceIndex: 2, finished: false, lastPlayed: .now, bookmarked: true), for: url)
+        a.flush()
+        #expect(ProgressStore(file: file).progress(for: url)?.bookmarked == true)
+        let old = """
+            {"/tmp/x.md":{"sentenceIndex":5,"finished":true,"lastPlayed":0}}
+            """
+        try old.write(to: file, atomically: true, encoding: .utf8)
+        let b = ProgressStore(file: file).progress(for: url)
+        #expect(b?.sentenceIndex == 5)
+        #expect(b?.finished == true)
+        #expect(b?.bookmarked == false)
+    }
     @Test func moveCarriesAnEntryToANewPath() {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString + ".json")

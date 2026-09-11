@@ -7,6 +7,7 @@ import Vault
 struct ReaderView: View {
     var model: AppModel
     var document: Document
+    var bookmarked: Bool { model.isBookmarked(document) }
     @AppStorage(ReaderSize.key) private var sizeIndex = Type.readerDefaultIndex
     @State private var follow = true
     @State private var editing = false
@@ -108,7 +109,13 @@ struct ReaderView: View {
                 }
                 .disabled(document.type == .pdf || loadingDraft || savesInFlight > 0)
                 .help(editButtonLabel)
-                IconButton("bookmark", label: "Mark finished") { model.toggleFinished(document) }
+                // The ribbon fills and takes the accent when the bookmark is on, so the
+                // button shows its state and not only its verb.
+                IconButton(
+                    bookmarked ? "bookmark.fill" : "bookmark",
+                    label: bookmarked ? "Remove Bookmark" : "Bookmark"
+                ) { model.toggleBookmark(document) }
+                .foregroundStyle(bookmarked ? Ink.accent : Ink.primary)
             }
         }
         .onChange(of: player.isPlaying) { _, playing in if playing { follow = true } }

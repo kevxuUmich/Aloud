@@ -197,6 +197,61 @@ import Vault
         }
     }
 
+    // MARK: Bookmarks
+
+    /// A bookmark is a flag of the reader's own, and it outlives the reading: the
+    /// place moving on and the document finishing leave it where it was.
+    @Test func aBookmarkSurvivesPlaybackAndFinishing() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            #expect(!model.isBookmarked(a))
+            model.toggleBookmark(a)
+            #expect(model.isBookmarked(a))
+            await model.open(a).value
+            model.player.play()
+            model.player.seek(to: 1)
+            model.toggleFinished(a)
+            #expect(model.progress.progress(for: a.url)?.finished == true)
+            #expect(model.isBookmarked(a))
+            model.toggleBookmark(a)
+            #expect(!model.isBookmarked(a))
+            #expect(model.progress.progress(for: a.url)?.finished == true)
+        }
+    }
+
+    /// Both toggles change what the library shows, so each is a change a view can see.
+    @Test func togglesAreObservable() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            let seen = Counter()
+            withObservationTracking {
+                _ = model.status(for: a)
+            } onChange: {
+                seen.bump()
+            }
+            model.toggleFinished(a)
+            try await poll { seen.count == 1 }
+            #expect(seen.count == 1)
+            #expect(model.status(for: a) == "Finished")
+            withObservationTracking {
+                _ = model.isBookmarked(a)
+            } onChange: {
+                seen.bump()
+            }
+            model.toggleBookmark(a)
+            try await poll { seen.count == 2 }
+            #expect(seen.count == 2)
+        }
+    }
+
+    /// A count an observation's `onChange` can bump from wherever it is called.
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        var count: Int { lock.withLock { n } }
+        func bump() { lock.withLock { n += 1 } }
+    }
+
     // MARK: The clipboard panel
 
     /// The hotkey with text: a preview, and nothing on disk until Play.

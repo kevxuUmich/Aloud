@@ -111,6 +111,9 @@ public enum Type {
     /// own title, so the editable one reads as the title and not as a control.
     public static let toolbarTitle = Font.headline
     public static let caption = Font.caption
+    /// The ribbon on a bookmarked card: a title's size, so it reads over the page
+    /// from across the grid without covering it.
+    public static let bookmark = Font.title3
     /// A badge's word or two: smaller than the caption, with weight to hold its capsule.
     public static let badge = Font.caption2.weight(.medium)
     public static let control = Font.body.weight(.medium)
