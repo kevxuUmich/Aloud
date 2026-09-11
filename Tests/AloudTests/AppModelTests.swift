@@ -294,7 +294,28 @@ import Vault
         }
     }
 
-    /// A second Play while the first is still writing is one write, not two.
+    /// Text pasted once already is the note it became: Play plays that note, and
+    /// nothing new lands on disk.
+    @Test func playingTextAlreadyPastedReusesItsNote() async throws {
+        try await withModel { (model: AppModel, dir: URL) async throws in
+            model.addRoot(dir)
+            model.preview(clipboard: "Hello there.")
+            await model.playPreview()?.value
+            let note = try #require(model.current)
+            model.dismissClipboardPanel()
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            await model.open(a).value
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
+            await model.playPreview()?.value
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(model.current?.id == note.id)
+            #expect(model.player.isPlaying)
+            let files = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+            #expect(files == ["Hello there.md", "a.md"])
+        }
+    }
+
     @Test func aSecondPlayWhileWritingIsIgnored() async throws {
         try await withModel { model, dir in
             model.addRoot(dir)
@@ -349,6 +370,42 @@ import Vault
             #expect(model.clipboardPanel == nil)
             #expect(model.player.isPlaying)
             #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 1)
+        }
+    }
+
+    /// The hotkey again with the note's own text, after the panel was dismissed: the
+    /// panel comes back as the note's player and the reading pauses. Not a preview,
+    /// which would say the note has not started and would write it a second time.
+    @Test func theHotkeyBringsBackThePlayerAndPausesIt() async throws {
+        try await withModel { (model: AppModel, dir: URL) async throws in
+            model.addRoot(dir)
+            model.preview(clipboard: "Hello there.")
+            await model.playPreview()?.value
+            model.dismissClipboardPanel()
+            #expect(model.player.isPlaying)
+            model.preview(clipboard: " Hello there.\n")
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(!model.player.isPlaying)
+            #expect(model.playPreview() == nil)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 1)
+        }
+    }
+
+    /// The player only comes back while the note is what is loaded: with another
+    /// document open, the same text is a new preview, and that document plays on.
+    @Test func theNotesTextIsAPreviewAgainOnceAnotherDocumentIsOpen() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            model.preview(clipboard: "Hello there.")
+            await model.playPreview()?.value
+            model.dismissClipboardPanel()
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            await model.open(a).value
+            model.player.play()
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
+            #expect(model.player.isPlaying)
+            #expect(model.current?.id == a.id)
         }
     }
 

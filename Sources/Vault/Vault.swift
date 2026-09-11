@@ -25,8 +25,17 @@ public actor Vault {
 
     public func tree() throws -> [Folder] { try roots.map { try Scanner.scan(root: $0) } }
 
+    /// Text already written into the folder is the note it became, not a numbered
+    /// second file: the same paragraph pasted twice is one note. Only the files this
+    /// text would be named after are read, the title's own name and its numbered
+    /// siblings, so the check costs a few reads and not the folder. A note edited since
+    /// it was pasted no longer reads the same and is left as its own.
     public func makeNote(text: String, in folder: URL) throws -> URL {
         let existing = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        for name in NoteName.siblings(of: text, among: existing) {
+            let url = folder.appendingPathComponent(name)
+            if (try? String(contentsOf: url, encoding: .utf8)) == text { return url }
+        }
         let url = folder.appendingPathComponent(NoteName.make(from: text, taken: existing))
         try text.write(to: url, atomically: true, encoding: .utf8)
         return url

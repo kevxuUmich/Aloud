@@ -17,6 +17,23 @@ import Testing
         let tree = try await vault.tree()
         #expect(tree[0].documents.first?.title == "Hello there.")
     }
+    /// The same text again is the note already on disk, not a numbered second file;
+    /// a different note under the same title, and a note edited since, are their own.
+    @Test func theSameTextAgainIsTheNoteAlreadyWritten() async throws {
+        let root = try tempRoot()
+        let vault = Vault(roots: [root])
+        let first = try await vault.makeNote(text: "Hello there.\n\nMore.", in: root)
+        let again = try await vault.makeNote(text: "Hello there.\n\nMore.", in: root)
+        #expect(again == first)
+        let other = try await vault.makeNote(text: "Hello there.\n\nElse.", in: root)
+        #expect(other.lastPathComponent == "Hello there 2.md")
+        let otherAgain = try await vault.makeNote(text: "Hello there.\n\nElse.", in: root)
+        #expect(otherAgain == other)
+        try "Hello there.\n\nEdited.".write(to: first, atomically: true, encoding: .utf8)
+        let third = try await vault.makeNote(text: "Hello there.\n\nMore.", in: root)
+        #expect(third.lastPathComponent == "Hello there 3.md")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 3)
+    }
     @Test func savesEditsAtomically() async throws {
         let root = try tempRoot()
         let vault = Vault(roots: [root])

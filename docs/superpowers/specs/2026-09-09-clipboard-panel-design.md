@@ -16,8 +16,14 @@ Pressing the hotkey in any app, window open or closed:
 - Layout mirrors the Now Playing card: a square glyph plate at the left, the title and a subtitle at the right, transport under them, a scrubber under that.
 - Before Play, the title is the clipboard's first line as `Title.from(text:fallback:)` names a note, the subtitle is `From clipboard · ~3 min · 412 words`, the glyph plate carries the waveform, and the transport shows Play alone enabled with the scrubber empty.
 - Play writes the note, opens it and speaks, exactly as `pasteNote(text:andPlay:)` does today. The panel stays and becomes a mini player: play/pause, back 15 s, forward 15 s, the scrubber, elapsed and remaining, all bound to the one `Player`.
+- Text that was pasted before is the note it became: Play opens and plays that note rather than writing a numbered second file.
+The check reads only the files the text would have been named, the title's own name and its numbered siblings, and compares their whole contents, so a note edited since it was pasted is left as its own.
+The window's Cmd+Shift+V goes through the same path.
 - Enter or Space plays. Escape dismisses. A click anywhere outside dismisses. Dismissing before Play leaves nothing behind; dismissing after Play leaves the note and keeps playing, since the transport bar and the menu-bar item already carry the player.
 - The hotkey while the panel is open: if the clipboard's text differs from the previewed text, the preview swaps to the new text and the transport returns to the before-Play state without touching the current player. If it is the same text, the panel stays as it is. If the panel is already a player for that text, nothing changes.
+- The hotkey after the panel was dismissed, with the played note's text still on the clipboard and the note still loaded: the panel comes back as the note's player, and the reading pauses.
+It is not a preview, which would say the note has not started and would write it a second time.
+Different text is a preview, as above, and the player is left alone.
 - With no text on the clipboard, the panel opens with the title `Nothing to read` and the subtitle `The clipboard has no text`, transport disabled, and dismisses itself after `Motion.emptyPanelHold`. The menu-bar glyph no longer shakes, since the miss now has a place to be reported. `shakeCount` and its `.wiggle` effect are removed.
 - With no default folder, Play cannot write, so the subtitle reads `Pick a folder in Aloud first` and Play opens the main window instead. This is today's `Pick a folder to read from first` notice, moved onto the panel.
 

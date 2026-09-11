@@ -135,6 +135,11 @@ final class AppModel {
     /// The write Play started, until it lands. A second Play in that time would be a
     /// second note with the same text.
     private var previewPlay: Task<Void, Never>?
+    /// The note Play wrote, and the text it was written from, kept past the panel's
+    /// dismissal. The hotkey with that text again, while the note is still what is
+    /// loaded, brings the panel back as the note's player rather than as a preview:
+    /// a preview would say the note has not started, and Play would write it again.
+    private var playedNote: (id: String, preview: ClipboardPreview)?
     /// The timer that takes an empty panel down again.
     private var emptyHoldTask: Task<Void, Never>?
     private let emptyPanelHold: Duration
@@ -259,6 +264,11 @@ final class AppModel {
     /// presses the hotkey twice does not lose the player they started. Different text
     /// swaps the preview and leaves the player alone: the panel is the preview's,
     /// and the transport bar and the menu-bar item still carry the player.
+    ///
+    /// The text of the note the panel played, with that note still loaded, is not a
+    /// new preview either, however the panel was dismissed in between: the panel
+    /// comes back as the note's player, and the hotkey pauses the reading, since from
+    /// another app it is the one key that reaches the player at all.
     func preview(clipboard text: String?) {
         emptyHoldTask?.cancel()
         let new = text.flatMap(ClipboardPreview.init(text:))
@@ -270,6 +280,11 @@ final class AppModel {
         // panel's: it is cancelled here rather than left to land on a card that is gone.
         previewPlay?.cancel()
         previewPlay = nil
+        if let new, let played = playedNote, played.preview == new, current?.id == played.id {
+            player.pause()
+            clipboardPanel = .playing(new)
+            return
+        }
         guard let p = new else {
             clipboardPanel = .empty
             emptyHoldTask = Task { [weak self, emptyPanelHold] in
@@ -298,6 +313,8 @@ final class AppModel {
                 // fires belongs to a Play that is no longer the panel's, so it returns
                 // before `previewPlay = nil` below, leaving the live task's own slot alone.
                 guard !Task.isCancelled, clipboardPanel?.preview == p else { return }
+                // `writeNote` has checked that the note is what is loaded before it plays.
+                playedNote = current.map { ($0.id, p) }
                 clipboardPanel = .playing(p)
             } catch {
                 guard !Task.isCancelled, clipboardPanel?.preview == p else { return }

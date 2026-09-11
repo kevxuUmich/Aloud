@@ -19,11 +19,32 @@ public enum NoteName {
         return ext.isEmpty ? base : base + "." + ext
     }
 
-    public static func make(from text: String, taken: Set<String>) -> String {
+    /// The names, among those taken, that a note of this text would have been given:
+    /// the title's own name and its numbered siblings, in the order they were handed
+    /// out, so a caller can look for the text there and nowhere else.
+    public static func siblings(of text: String, among taken: Set<String>) -> [String] {
+        let base = base(for: text)
+        var names: [String] = []
+        var candidate = base + ".md"
+        var n = 2
+        while taken.contains(candidate) {
+            names.append(candidate)
+            candidate = "\(base) \(n).md"
+            n += 1
+        }
+        return names
+    }
+
+    /// The name without its extension or number: the first non-blank line, made safe.
+    private static func base(for text: String) -> String {
         let firstLine =
             text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""
-        let base = fileName(for: firstLine, extension: "")
+        return fileName(for: firstLine, extension: "")
+    }
+
+    public static func make(from text: String, taken: Set<String>) -> String {
+        let base = base(for: text)
         var candidate = base + ".md"
         var n = 2
         while taken.contains(candidate) {
