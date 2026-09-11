@@ -142,6 +142,11 @@ final class AppModel {
     private var playedNote: (id: String, preview: ClipboardPreview)?
     /// The timer that takes an empty panel down again.
     private var emptyHoldTask: Task<Void, Never>?
+    /// Bumped by every mark the reader sets by hand, Finished and the bookmark. The
+    /// progress store is not observable, and a card that read it alone would keep
+    /// showing what it read first; reading this beside it is what makes a toggle
+    /// something the library sees.
+    private var marksVersion = 0
     private let emptyPanelHold: Duration
     /// What the Now Playing card says under the title for the document that is open:
     /// the folder's name, or "From clipboard" for a note the panel wrote. Kept so a
@@ -915,8 +920,27 @@ final class AppModel {
         progress.set(
             PlaybackProgress(
                 sentenceIndex: p?.sentenceIndex ?? 0, finished: !(p?.finished ?? false),
-                lastPlayed: .now),
+                lastPlayed: .now, bookmarked: p?.bookmarked ?? false),
             for: doc.url)
+        marksVersion += 1
+    }
+
+    /// The bookmark on a document, a flag of the reader's own. It is kept with the
+    /// place so it survives a rename with it, and it is not the place: the reading
+    /// can move on, finish and start again and the bookmark is where it was.
+    func toggleBookmark(_ doc: Document) {
+        let p = progress.progress(for: doc.url)
+        progress.set(
+            PlaybackProgress(
+                sentenceIndex: p?.sentenceIndex ?? 0, finished: p?.finished ?? false,
+                lastPlayed: p?.lastPlayed ?? .distantPast, bookmarked: !(p?.bookmarked ?? false)),
+            for: doc.url)
+        marksVersion += 1
+    }
+
+    func isBookmarked(_ doc: Document) -> Bool {
+        _ = marksVersion
+        return progress.progress(for: doc.url)?.bookmarked ?? false
     }
 
     /// True when the write landed. The caller keeps the reader in its editing state
@@ -1008,7 +1032,8 @@ final class AppModel {
     }
 
     func status(for doc: Document) -> String {
-        DocumentStatus.label(
+        _ = marksVersion
+        return DocumentStatus.label(
             progress: progress.progress(for: doc.url), isCurrent: doc.id == current?.id,
             remaining: player.remaining, previewWords: Estimate.words(in: doc.preview),
             bytes: doc.bytes, rateFactor: player.rate.factor)
@@ -1016,7 +1041,11 @@ final class AppModel {
 
     private func record(index: Int, finished: Bool) {
         guard let c = current else { return }
-        progress.set(PlaybackProgress(sentenceIndex: index, finished: finished, lastPlayed: .now), for: c.url)
+        let bookmarked = progress.progress(for: c.url)?.bookmarked ?? false
+        progress.set(
+            PlaybackProgress(
+                sentenceIndex: index, finished: finished, lastPlayed: .now, bookmarked: bookmarked),
+            for: c.url)
     }
 
     func folder(at url: URL) -> Folder? {

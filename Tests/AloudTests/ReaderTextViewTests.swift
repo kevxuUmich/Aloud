@@ -20,6 +20,21 @@ import Testing
         return (scroll, tv, tv.layoutManager!, tv.textContainer!)
     }
 
+    /// Serif puts a serif on every character of the prose, and the paragraph gap's
+    /// blank line with it, so the typing attributes and the storage agree.
+    @Test func serifIsLaidOverTheWholeStorage() {
+        let (_, tv, _, _) = laidOut("One.\n\nTwo.")
+        let typing = ReaderTextView.style(tv.textStorage!, fontSize: Self.fontSize, design: .serif)
+        let font = typing[.font] as! NSFont
+        let serif = ReaderTextView.font(size: Self.fontSize, design: .serif)
+        #expect(serif.familyName != NSFont.systemFont(ofSize: Self.fontSize).familyName)
+        #expect(font.familyName == serif.familyName)
+        #expect(font.pointSize == Self.fontSize)
+        let storage = tv.textStorage!
+        let last = storage.attribute(.font, at: storage.length - 1, effectiveRange: nil) as! NSFont
+        #expect(last.familyName == serif.familyName)
+    }
+
     /// The whole file, not the first screen of it: the view grows to its layout. It
     /// did not, once, because `maxSize` defaulted to the first frame the scroll view
     /// gave it, and every line past that height was unreachable.

@@ -23,7 +23,9 @@ struct LibraryGrid: View {
                     Button {
                         model.open(d)
                     } label: {
-                        Card(title: d.title, preview: d.preview, status: model.status(for: d))
+                        Card(
+                            title: d.title, preview: d.preview, status: model.status(for: d),
+                            bookmarked: model.isBookmarked(d))
                     }
                     .buttonStyle(.plain)
                     .documentMenu(model, d)

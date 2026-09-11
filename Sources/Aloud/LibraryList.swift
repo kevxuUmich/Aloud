@@ -19,7 +19,9 @@ struct LibraryList: View {
                     Button {
                         model.open(d)
                     } label: {
-                        ListRow(title: d.title, status: model.status(for: d), symbol: "doc.fill")
+                        ListRow(
+                            title: d.title, status: model.status(for: d), symbol: "doc.fill",
+                            bookmarked: model.isBookmarked(d))
                     }
                     .buttonStyle(.plain)
                     .documentMenu(model, d)

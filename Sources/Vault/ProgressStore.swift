@@ -4,10 +4,23 @@ public struct PlaybackProgress: Codable, Hashable, Sendable {
     public var sentenceIndex: Int
     public var finished: Bool
     public var lastPlayed: Date
-    public init(sentenceIndex: Int, finished: Bool, lastPlayed: Date) {
+    /// The reader's own flag on the document, kept beside the place so it lives in
+    /// Aloud's data and never in the file. A file written before there were
+    /// bookmarks decodes with it off.
+    public var bookmarked: Bool
+    public init(sentenceIndex: Int, finished: Bool, lastPlayed: Date, bookmarked: Bool = false) {
         self.sentenceIndex = sentenceIndex
         self.finished = finished
         self.lastPlayed = lastPlayed
+        self.bookmarked = bookmarked
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sentenceIndex = try c.decode(Int.self, forKey: .sentenceIndex)
+        finished = try c.decode(Bool.self, forKey: .finished)
+        lastPlayed = try c.decode(Date.self, forKey: .lastPlayed)
+        bookmarked = try c.decodeIfPresent(Bool.self, forKey: .bookmarked) ?? false
     }
 }
 

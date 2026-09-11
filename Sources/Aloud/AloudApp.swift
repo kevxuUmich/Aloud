@@ -24,6 +24,10 @@ struct AloudApp: App {
     /// The reader's text size, shared with the reader through the one key, so the
     /// View menu's steps and the toolbar's menu move the same setting.
     @AppStorage(ReaderSize.key) private var readerSize = Type.readerDefaultIndex
+    @AppStorage(ReaderTypeface.key) private var typefaceRaw = ReaderTypeface.standard.rawValue
+    /// The window's appearance, read here so the one scene applies it and the View
+    /// menu can set it, through the key the reader's menu also writes.
+    @AppStorage(Appearance.key) private var appearanceRaw = Appearance.standard.rawValue
 
     @State private var model: AppModel
     /// The clipboard panel's owner, alive with the window closed: it is not a scene,
@@ -44,7 +48,10 @@ struct AloudApp: App {
 
     var body: some Scene {
         Window("Aloud", id: Self.mainWindowID) {
-            if Self.showGallery { Gallery() } else { RootView(model: model) }
+            Group {
+                if Self.showGallery { Gallery() } else { RootView(model: model) }
+            }
+            .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
         }
         .defaultSize(Size.minWindow)
         .commands {
@@ -72,6 +79,13 @@ struct AloudApp: App {
                 Button("Larger Text") { readerSize = ReaderSize.larger(readerSize) }
                     .keyboardShortcut("=", modifiers: .command)
                     .disabled(ReaderSize.clamp(readerSize) == ReaderSize.last)
+                Divider()
+                Picker("Typeface", selection: $typefaceRaw) {
+                    ForEach(ReaderTypeface.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
+                }
+                Picker("Appearance", selection: $appearanceRaw) {
+                    ForEach(Appearance.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
+                }
             }
             CommandMenu("Playback") {
                 // Space, left and right are bare keys, so while the reader's editor has

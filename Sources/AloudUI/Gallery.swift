@@ -26,6 +26,9 @@ public struct Gallery: View {
                             title: "Managing Agents, From First Principles", preview: Self.lorem,
                             status: "3:12 left")
                         Card(title: "Finished one", preview: Self.lorem, status: "Finished")
+                        Card(
+                            title: "Kept for later", preview: Self.lorem, status: "~8 min",
+                            bookmarked: true)
                     }
                 }
                 section("Thumb") {
@@ -80,6 +83,9 @@ public struct Gallery: View {
                         ListRow(title: "Essays", status: "12 documents", symbol: "folder.fill")
                         ListRow(title: "It's been a fast year.", status: "~8 min", symbol: "doc.fill")
                         ListRow(title: "Finished one", status: "Finished", symbol: "doc.fill")
+                        ListRow(
+                            title: "Kept for later", status: "~8 min", symbol: "doc.fill",
+                            bookmarked: true)
                     }
                 }
                 section("VoiceRow") {

@@ -11,6 +11,9 @@ extension View {
                     model.open(doc)
                     model.player.play()
                 }
+                Button(model.isBookmarked(doc) ? "Remove Bookmark" : "Bookmark") {
+                    model.toggleBookmark(doc)
+                }
                 Button(
                     model.progress.progress(for: doc.url)?.finished == true
                         ? "Mark Unfinished" : "Mark Finished"
