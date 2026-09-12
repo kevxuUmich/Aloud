@@ -9,6 +9,7 @@ struct MenuBarPanel: View {
     var model: AppModel
     @Environment(\.openWindow) private var openWindow
     var player: Player { model.player }
+    @State private var showPace = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
@@ -29,8 +30,12 @@ struct MenuBarPanel: View {
                 Spacer()
                 RateButton(
                     label: player.rate.label, all: Rate.allCases.map(\.label),
-                    onCycle: { model.setRate(player.rate.next) },
-                    onPick: { model.setRate(Rate.allCases[$0]) })
+                    onOpen: { showPace.toggle() },
+                    onPick: { model.setRate(Rate.allCases[$0]) }
+                )
+                .popover(isPresented: $showPace, arrowEdge: .bottom) {
+                    PacePopover(model: model)
+                }
             }
             .disabled(model.current == nil)
             Divider()

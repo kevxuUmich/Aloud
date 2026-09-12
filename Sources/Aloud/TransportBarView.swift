@@ -60,19 +60,24 @@ struct TransportBarView: View {
                                 if let v = draggedVolume { model.setVolume(v) }
                                 draggedVolume = nil
                             })
-                        RateButton(
-                            label: player.rate.label, all: Rate.allCases.map(\.label),
-                            onCycle: { model.setRate(player.rate.next) },
-                            onPick: { model.setRate(Rate.allCases[$0]) }
-                        )
-                        .disabled(!isLoaded)
-                        // The sliders behind the speed: speed itself and the two pauses.
-                        // Live like the voice button, since a pace can be set before
-                        // anything is loaded and is kept for whatever is.
-                        IconButton("slider.horizontal.3", label: "Speed and pauses") {
-                            showPace.toggle()
+                        // The speed and the tune button beside it open the same sliders:
+                        // one place to set the pace, reached from either. The popover
+                        // hangs off the pair, so its arrow points at the pair whichever
+                        // of the two was pressed.
+                        HStack(spacing: Space.m) {
+                            RateButton(
+                                label: player.rate.label, all: Rate.allCases.map(\.label),
+                                onOpen: { showPace.toggle() },
+                                onPick: { model.setRate(Rate.allCases[$0]) }
+                            )
+                            .disabled(!isLoaded)
+                            // Live like the voice button, since a pace can be set before
+                            // anything is loaded and is kept for whatever is.
+                            IconButton("slider.horizontal.3", label: "Speed and pauses") {
+                                showPace.toggle()
+                            }
+                            .help("Speed and pauses")
                         }
-                        .help("Speed and pauses")
                         .popover(isPresented: $showPace, arrowEdge: .top) {
                             PacePopover(model: model)
                         }

@@ -1,22 +1,22 @@
 import SwiftUI
 
-/// Click cycles to the next step, the menu picks any step.
+/// Click opens the pace sliders, the menu picks any step.
 public struct RateButton: View {
     let label: String
     let all: [String]
-    let onCycle: () -> Void
+    let onOpen: () -> Void
     let onPick: (Int) -> Void
     public init(
-        label: String, all: [String], onCycle: @escaping () -> Void,
+        label: String, all: [String], onOpen: @escaping () -> Void,
         onPick: @escaping (Int) -> Void
     ) {
         self.label = label
         self.all = all
-        self.onCycle = onCycle
+        self.onOpen = onOpen
         self.onPick = onPick
     }
     public var body: some View {
-        Button(label, action: onCycle)
+        Button(label, action: onOpen)
             .font(Type.control)
             .buttonStyle(.glass)
             .contextMenu {

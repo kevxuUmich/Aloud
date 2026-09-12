@@ -38,7 +38,7 @@ Without it, and in the few apps that keep their selection to themselves, the car
 - Highlights the sentence and the word being read. Click any sentence to jump to it.
 - Remembers where you stopped in every document and marks it Finished at the end.
 - Bookmarks a document from the reader or its card.
-- Offers ten speeds from 0.75x to 3x, a quarter apart. A change takes effect on the current sentence.
+- Offers eleven speeds from 0.5x to 3x, a quarter apart. A change takes effect on the current sentence.
 - Lets you preview every voice on the Mac before picking one, with seven recommended voices at the top of the list.
 - Skips back and forward 10 seconds, always to a sentence boundary.
 - Reads in sans or serif type, at five sizes, in light or dark.

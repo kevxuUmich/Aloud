@@ -65,7 +65,7 @@ public struct Gallery: View {
                     }
                 }
                 section("RateButton") {
-                    RateButton(label: "1x", all: ["0.75x", "1x", "1.25x"], onCycle: {}, onPick: { _ in })
+                    RateButton(label: "1x", all: ["0.5x", "0.75x", "1x"], onOpen: {}, onPick: { _ in })
                 }
                 section("Scrubber") {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
