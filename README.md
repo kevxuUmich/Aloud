@@ -24,6 +24,7 @@ Or select a paragraph in any app and press Option+Space.
 A small card appears under the menu bar with the text's title, its length, and a Play button.
 Option+Space again, or Space, plays it, and nothing is written to disk until then.
 Up and Down change the volume while the card is up, and Option+Up and Option+Down the speed.
+The same keys work in the window, with Space to play and pause and Left and Right to skip.
 Text you have played before opens the note it already became rather than a duplicate.
 Once it is reading, Option+Space pauses it, and Space resumes it.
 
