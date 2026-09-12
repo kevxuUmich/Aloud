@@ -1,5 +1,6 @@
 import AloudUI
 import AppKit
+import Speech
 import SwiftUI
 
 /// Owns the one floating panel and keeps it in step with `model.clipboardPanel`:
@@ -128,28 +129,25 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
         panel.orderOut(nil)
     }
 
-    /// Enter and Space play, Escape dismisses. A local monitor, since the panel is
-    /// key while it is up and every keystroke reaches Aloud; the card's own buttons
-    /// are the transport's, and these are the shortcuts to them.
-    ///
-    /// Bare keys only: a modifier makes the keystroke a menu's, and Cmd+Return or
-    /// Ctrl+Space would be swallowed here rather than doing what they do everywhere else.
+    /// The keys in `PanelKeys`, through a local monitor: the panel is key while it is
+    /// up and every keystroke reaches Aloud. The card's own buttons are the
+    /// transport's, and these are the shortcuts to them; the arrows step the volume,
+    /// and with Option the speed, which the card's second line shows.
     private func installKeys() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isKeyWindow,
-                event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+                let action = PanelKeys.action(keyCode: event.keyCode, modifiers: event.modifierFlags)
             else { return event }
-            switch event.keyCode {
-            case Keys.escape:
-                self.model.dismissClipboardPanel()
-                return nil
-            case Keys.enter, Keys.keypadEnter, Keys.space:
-                self.press()
-                return nil
-            default:
-                return event
+            switch action {
+            case .dismiss: self.model.dismissClipboardPanel()
+            case .play: self.press()
+            case .faster: self.model.setRate(self.model.player.rate.faster)
+            case .slower: self.model.setRate(self.model.player.rate.slower)
+            case .louder: self.model.setVolume(self.model.player.volume + Player.volumeStep)
+            case .quieter: self.model.setVolume(self.model.player.volume - Player.volumeStep)
             }
+            return nil
         }
     }
 
@@ -170,13 +168,5 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     /// After Play the note stays and keeps playing; only the panel goes.
     func windowDidResignKey(_ notification: Notification) {
         model.dismissClipboardPanel()
-    }
-
-    /// The virtual key codes the monitor reads. Carbon's names, without Carbon.
-    private enum Keys {
-        static let escape: UInt16 = 53
-        static let enter: UInt16 = 36
-        static let keypadEnter: UInt16 = 76
-        static let space: UInt16 = 49
     }
 }

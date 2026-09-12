@@ -100,8 +100,19 @@ struct AloudApp: App {
                 Button("Forward \(Self.skipStep) seconds") { model.player.skip(seconds: Player.skipSeconds) }
                     .keyboardShortcut(.rightArrow, modifiers: [])
                     .disabled(model.isEditing)
-                Button("Faster") { model.setRate(model.player.rate.next) }
-                    .keyboardShortcut("]", modifiers: .command)
+                Divider()
+                // The same keys as the clipboard panel's, so a listener learns one set:
+                // the arrows are the volume, and with Option the speed.
+                Button("Louder") { model.setVolume(model.player.volume + Player.volumeStep) }
+                    .keyboardShortcut(.upArrow, modifiers: [])
+                    .disabled(model.isEditing)
+                Button("Quieter") { model.setVolume(model.player.volume - Player.volumeStep) }
+                    .keyboardShortcut(.downArrow, modifiers: [])
+                    .disabled(model.isEditing)
+                Button("Faster") { model.setRate(model.player.rate.faster) }
+                    .keyboardShortcut(.upArrow, modifiers: .option)
+                Button("Slower") { model.setRate(model.player.rate.slower) }
+                    .keyboardShortcut(.downArrow, modifiers: .option)
             }
         }
 

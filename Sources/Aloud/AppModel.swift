@@ -257,17 +257,39 @@ final class AppModel {
         if let terminateObserver { NotificationCenter.default.removeObserver(terminateObserver) }
     }
 
-    /// The hotkey: the clipboard is read once and previewed, and nothing is written
-    /// until Play. Read once because a second read a moment later can hand back
-    /// something else.
-    func previewClipboard() {
-        preview(clipboard: NSPasteboard.general.string(forType: .string))
+    /// The hotkey: the selection in the app in front, or failing that the clipboard,
+    /// is read once and previewed, and nothing is written until the second press.
+    /// Read once because a second read a moment later can hand back something else.
+    ///
+    /// The selection needs the Accessibility grant. Without it the first press ever
+    /// asks, once, and this press and every one until it is given are the clipboard's.
+    func previewSelectionOrClipboard() {
+        let selection: String?
+        if Selection.isTrusted {
+            selection = Selection.text()
+        } else {
+            selection = nil
+            if !Defaults.askedForSelection {
+                Defaults.askedForSelection = true
+                Selection.ask()
+            }
+        }
+        preview(selection: selection, clipboard: NSPasteboard.general.string(forType: .string))
     }
 
-    /// The panel's state from text already in hand, which is what the tests have.
-    /// The same text as the panel already shows changes nothing, so a listener who
-    /// presses the hotkey twice does not lose the player they started. Different text
-    /// swaps the preview and leaves the player alone: the panel is the preview's,
+    /// The clipboard alone, which is what most of the tests have.
+    @discardableResult
+    func preview(clipboard text: String?) -> Task<Void, Never>? {
+        preview(selection: nil, clipboard: text)
+    }
+
+    /// The panel's state from text already in hand. The selection wins when there is
+    /// one: it is what the listener is looking at, and the clipboard may be old.
+    ///
+    /// The same text as the panel already shows is the second press. A preview plays,
+    /// and the task is returned so a test can wait for the write; it is one press
+    /// whichever way the text arrived, selected and then copied included. Different
+    /// text swaps the preview and leaves the player alone: the panel is the preview's,
     /// and the transport bar and the menu-bar item still carry the player.
     ///
     /// The text of the note the panel played, with that note still loaded, is not a
@@ -275,24 +297,31 @@ final class AppModel {
     /// comes back as the note's player, and the hotkey pauses the reading, since from
     /// another app it is the one key that reaches the player at all. It pauses the
     /// same with the panel still up: the hotkey is the stop, and Space is the toggle.
-    func preview(clipboard text: String?) {
+    @discardableResult
+    func preview(selection: String?, clipboard: String?) -> Task<Void, Never>? {
         emptyHoldTask?.cancel()
-        let new = text.flatMap(ClipboardPreview.init(text:))
-        // The text the panel already shows is not a new preview, so the panel stays as
+        let new =
+            selection.flatMap { ClipboardPreview(text: $0, source: .selection) }
+            ?? clipboard.flatMap { ClipboardPreview(text: $0, source: .clipboard) }
+        // The text the panel already shows is the second press, so the panel stays as
         // it is and the write in the air, if there is one, still belongs to it.
-        if let new, clipboardPanel?.preview == new {
-            if case .playing? = clipboardPanel { player.pause() }
-            return
+        if let new, clipboardPanel?.preview?.text == new.text {
+            switch clipboardPanel {
+            case .playing?: player.pause()
+            case .preview?: return playPreview()
+            default: break
+            }
+            return nil
         }
         // Every path past here leaves the preview a Play belonged to, the empty
         // clipboard as much as new text, so the write in the air is no longer the
         // panel's: it is cancelled here rather than left to land on a card that is gone.
         previewPlay?.cancel()
         previewPlay = nil
-        if let new, let played = playedNote, played.preview == new, current?.id == played.id {
+        if let new, let played = playedNote, played.preview.text == new.text, current?.id == played.id {
             player.pause()
             clipboardPanel = .playing(new)
-            return
+            return nil
         }
         guard let p = new else {
             clipboardPanel = .empty
@@ -302,9 +331,10 @@ final class AppModel {
                 self.clipboardPanel = nil
                 self.emptyHoldTask = nil
             }
-            return
+            return nil
         }
         clipboardPanel = noteFolder == nil ? .needsFolder(p) : .preview(p)
+        return nil
     }
 
     /// The panel's Play: the note is written and opened and starts, and the panel
@@ -317,7 +347,7 @@ final class AppModel {
         let task = Task {
             do {
                 try await writeNote(
-                    text: p.text, in: folder, andPlay: true, subtitle: "From clipboard")
+                    text: p.text, in: folder, andPlay: true, subtitle: p.source.label)
                 // A stale task must never clear a live one: whichever of these guards
                 // fires belongs to a Play that is no longer the panel's, so it returns
                 // before `previewPlay = nil` below, leaving the live task's own slot alone.
@@ -343,7 +373,7 @@ final class AppModel {
     /// Registered once, from `start()`, behind its `started` guard.
     private func installHotkey() {
         KeyboardShortcuts.onKeyUp(for: .pasteAndPlay) { [weak self] in
-            MainActor.assumeIsolated { self?.previewClipboard() }
+            MainActor.assumeIsolated { self?.previewSelectionOrClipboard() }
         }
     }
 

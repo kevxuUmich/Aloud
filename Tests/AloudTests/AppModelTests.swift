@@ -396,23 +396,65 @@ import Vault
         }
     }
 
-    /// The same text again leaves the panel as it is: a preview stays a preview, and
-    /// the player stays the player, though the hotkey pauses it. Once paused, the
-    /// hotkey again leaves it paused: Space is the toggle, the hotkey is the stop.
-    @Test func theSameTextAgainKeepsThePanelAndPausesThePlayer() async throws {
+    /// The same text again is the second press: a preview plays, and once playing the
+    /// hotkey pauses it. Once paused, the hotkey again leaves it paused: Space is the
+    /// toggle, the hotkey is the stop.
+    @Test func theSameTextAgainPlaysThePreviewAndThenPausesThePlayer() async throws {
+        try await withModel { (model: AppModel, dir: URL) async throws in
+            model.addRoot(dir)
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
+            let play = try #require(model.preview(clipboard: " Hello there.\n"))
+            await play.value
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(model.player.isPlaying)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 1)
+            #expect(model.preview(clipboard: "Hello there.") == nil)
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(!model.player.isPlaying)
+            model.preview(clipboard: "Hello there.")
+            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
+            #expect(!model.player.isPlaying)
+        }
+    }
+
+    /// The second press while the write is in the air is not a second write.
+    @Test func theSameTextAgainWhileWritingIsIgnored() async throws {
         try await withModel { model, dir in
             model.addRoot(dir)
             model.preview(clipboard: "Hello there.")
-            model.preview(clipboard: "Hello there.")
-            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Hello there.")!))
-            await model.playPreview()?.value
-            #expect(model.player.isPlaying)
-            model.preview(clipboard: " Hello there.\n")
-            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
-            #expect(!model.player.isPlaying)
-            model.preview(clipboard: "Hello there.")
-            #expect(model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.")!))
-            #expect(!model.player.isPlaying)
+            let first = try #require(model.preview(clipboard: "Hello there."))
+            #expect(model.preview(clipboard: "Hello there.") == nil)
+            await first.value
+            #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 1)
+        }
+    }
+
+    /// The hotkey reads the selection in the app in front before the clipboard: what
+    /// is selected is what the listener is looking at, and the clipboard may be old.
+    @Test func theHotkeyPrefersTheSelectionOverTheClipboard() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            model.preview(selection: "Picked.", clipboard: "Copied.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Picked.", source: .selection)!))
+            model.preview(selection: " \n", clipboard: "Copied.")
+            #expect(model.clipboardPanel == .preview(ClipboardPreview(text: "Copied.", source: .clipboard)!))
+            model.preview(selection: nil, clipboard: nil)
+            #expect(model.clipboardPanel == .empty)
+        }
+    }
+
+    /// The same text is the same preview whichever way it arrived: selected, then
+    /// copied and pressed again, is the second press and plays.
+    @Test func theSameTextFromEitherSourceIsTheSecondPress() async throws {
+        try await withModel { model, dir in
+            model.addRoot(dir)
+            model.preview(selection: "Hello there.", clipboard: nil)
+            let play = try #require(model.preview(selection: nil, clipboard: "Hello there."))
+            await play.value
+            #expect(
+                model.clipboardPanel == .playing(ClipboardPreview(text: "Hello there.", source: .selection)!))
+            #expect(model.currentSubtitle == "From selection")
         }
     }
 
@@ -552,7 +594,18 @@ import Vault
             let text = Array(repeating: "word", count: 320).joined(separator: " ")
             let p = try #require(ClipboardPreview(text: text))
             #expect(p.words == 320)
-            #expect(view.subtitle(for: .preview(p)) == "From clipboard · ~2 min · 320 words")
+            #expect(view.subtitle(for: .preview(p)) == "From clipboard · 1x · ~2 min · 320 words")
+            let picked = try #require(ClipboardPreview(text: text, source: .selection))
+            #expect(view.subtitle(for: .preview(picked)) == "From selection · 1x · ~2 min · 320 words")
+            model.setRate(.x2)
+            #expect(view.subtitle(for: .playing(p)) == "From clipboard · 2x · ~1 min · 320 words")
+            model.player.rate = .x1
+            // The level is only said once it has been lowered: full is the default and
+            // a 100% on every card would be noise.
+            model.setVolume(0.6)
+            #expect(view.subtitle(for: .preview(p)) == "From clipboard · 1x · 60% · ~2 min · 320 words")
+            model.setVolume(Player.fullVolume)
+            #expect(view.subtitle(for: .preview(p)) == "From clipboard · 1x · ~2 min · 320 words")
             #expect(view.title(for: .empty) == "Nothing to read")
             #expect(view.subtitle(for: .empty) == "The clipboard has no text")
             #expect(view.subtitle(for: .needsFolder(p)) == "Pick a folder in Aloud first")

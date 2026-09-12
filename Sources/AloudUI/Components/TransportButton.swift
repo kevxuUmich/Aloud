@@ -1,11 +1,11 @@
 import SwiftUI
 
 public struct TransportButton: View {
-    public enum Kind { case back15, play, pause, forward15 }
+    public enum Kind { case back, play, pause, forward }
     /// The skip interval as the titles say it. `AloudUI` cannot see `Player.skipSeconds`,
     /// so the app passes it in and the button's words cannot drift from the step it
-    /// actually takes. The default is the interval the symbols are drawn with.
-    public static let defaultSkipSeconds = 15
+    /// actually takes, and the glyph carries the same number.
+    public static let defaultSkipSeconds = 10
     let kind: Kind
     let skipSeconds: Int
     let action: () -> Void
@@ -19,18 +19,18 @@ public struct TransportButton: View {
     }
     var symbol: String {
         switch kind {
-        case .back15: "15.arrow.trianglehead.counterclockwise"
+        case .back: "\(skipSeconds).arrow.trianglehead.counterclockwise"
         case .play: "play.fill"
         case .pause: "pause.fill"
-        case .forward15: "15.arrow.trianglehead.clockwise"
+        case .forward: "\(skipSeconds).arrow.trianglehead.clockwise"
         }
     }
     var label: String {
         switch kind {
-        case .back15: "Back \(skipSeconds) seconds"
+        case .back: "Back \(skipSeconds) seconds"
         case .play: "Play"
         case .pause: "Pause"
-        case .forward15: "Forward \(skipSeconds) seconds"
+        case .forward: "Forward \(skipSeconds) seconds"
         }
     }
     var size: CGFloat { kind == .play || kind == .pause ? Size.playControl : Size.control }

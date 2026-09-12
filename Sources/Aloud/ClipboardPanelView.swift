@@ -57,8 +57,18 @@ struct ClipboardPanelView: View {
         case .needsFolder: "Pick a folder in Aloud first"
         case .preview(_, let failure?): failure
         case .preview(let p, nil), .playing(let p):
-            "From clipboard · ~\(Format.minutes(p.estimate(factor: player.rate.factor))) · \(p.words) words"
+            [
+                p.source.label, player.rate.label, level,
+                "~\(Format.minutes(p.estimate(factor: player.rate.factor)))", "\(p.words) words",
+            ].compactMap { $0 }.joined(separator: " · ")
         }
+    }
+
+    /// The volume, once the arrows have lowered it. Full is the default, and a 100% on
+    /// every card would be noise; below full the line says where the arrows left it.
+    private var level: String? {
+        guard player.volume < Player.fullVolume else { return nil }
+        return Format.percent(player.volume)
     }
 
     func transport(for s: ClipboardPanelState) -> ClipboardCard.Transport {

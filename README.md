@@ -20,11 +20,16 @@ A Mac already ships with good voices, so Aloud is the small piece that hands the
 Point Aloud at folders you already have.
 It reads `.md`, `.txt`, and `.pdf` in place and never copies or uploads them, so an Obsidian vault works as it stands.
 
-Or copy a paragraph in any app and press Option+Space.
+Or select a paragraph in any app and press Option+Space.
 A small card appears under the menu bar with the text's title, its length, and a Play button.
-Space plays it, and nothing is written to disk until you do.
+Option+Space again, or Space, plays it, and nothing is written to disk until then.
+Up and Down change the volume while the card is up, and Option+Up and Option+Down the speed.
+The same keys work in the window, with Space to play and pause and Left and Right to skip.
 Text you have played before opens the note it already became rather than a duplicate.
-Option+Space again pauses the reading, and Space resumes it.
+Once it is reading, Option+Space pauses it, and Space resumes it.
+
+Reading the selection needs the Accessibility permission, which Aloud asks for the first time.
+Without it, and in the few apps that keep their selection to themselves, the card reads the clipboard instead, so copying always works.
 
 ## What it does
 
@@ -33,9 +38,9 @@ Option+Space again pauses the reading, and Space resumes it.
 - Highlights the sentence and the word being read. Click any sentence to jump to it.
 - Remembers where you stopped in every document and marks it Finished at the end.
 - Bookmarks a document from the reader or its card.
-- Offers eight speeds from 0.75x to 3x. A change takes effect on the current sentence.
+- Offers eleven speeds from 0.5x to 3x, a quarter apart. A change takes effect on the current sentence.
 - Lets you preview every voice on the Mac before picking one, with seven recommended voices at the top of the list.
-- Skips back and forward 15 seconds, always to a sentence boundary.
+- Skips back and forward 10 seconds, always to a sentence boundary.
 - Reads in sans or serif type, at five sizes, in light or dark.
 - Edits `.md` and `.txt` in place, saving on Done, on blur, and on Cmd+S.
 - Keeps reading with the window closed. There is a menu bar player, the media keys and AirPods work, and the Now Playing card in Control Center shows what is playing. It pauses when you unplug your headphones.
@@ -53,7 +58,7 @@ Aloud needs macOS 26.
     make dev
 
 That builds the app and opens it.
-Add a folder, or copy some text and press Option+Space.
+Add a folder, or select some text and press Option+Space.
 
 ### The signed build
 

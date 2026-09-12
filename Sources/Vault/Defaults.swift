@@ -41,6 +41,12 @@ public enum Defaults {
         get { store.object(forKey: "showMenuBar") as? Bool ?? true }
         set { store.set(newValue, forKey: "showMenuBar") }
     }
+    /// Whether the hotkey has asked for the Accessibility grant, which it does once:
+    /// the system's prompt on every press would be a nag, and Settings has the button.
+    public static var askedForSelection: Bool {
+        get { store.bool(forKey: "askedForSelection") }
+        set { store.set(newValue, forKey: "askedForSelection") }
+    }
     public static var listView: Bool {
         get { store.bool(forKey: "listView") }
         set { store.set(newValue, forKey: "listView") }

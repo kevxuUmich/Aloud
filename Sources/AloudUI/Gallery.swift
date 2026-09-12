@@ -51,10 +51,10 @@ public struct Gallery: View {
                 }
                 section("TransportButton") {
                     HStack {
-                        TransportButton(.back15) {}
+                        TransportButton(.back) {}
                         TransportButton(.play) {}
                         TransportButton(.pause) {}
-                        TransportButton(.forward15) {}
+                        TransportButton(.forward) {}
                     }
                 }
                 section("VolumeControl") {
@@ -65,7 +65,7 @@ public struct Gallery: View {
                     }
                 }
                 section("RateButton") {
-                    RateButton(label: "1x", all: ["0.75x", "1x", "1.25x"], onCycle: {}, onPick: { _ in })
+                    RateButton(label: "1x", all: ["0.5x", "0.75x", "1x"], onOpen: {}, onPick: { _ in })
                 }
                 section("Scrubber") {
                     Scrubber(progress: 0.07, elapsed: "0:34", remaining: "~8:06") { _ in }
@@ -111,11 +111,13 @@ public struct Gallery: View {
                 section("ClipboardCard") {
                     VStack(alignment: .leading, spacing: Space.l) {
                         ClipboardCard(
-                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
-                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            title: "It's been a fast year.",
+                            subtitle: "From clipboard · 1x · ~3 min · 412 words", transport: .ready,
+                            progress: 0, elapsed: "0:00", remaining: "~2:35",
                             onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                         ClipboardCard(
-                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            title: "It's been a fast year.",
+                            subtitle: "From clipboard · 1x · ~3 min · 412 words",
                             transport: .playing(isPlaying: true), progress: 0.3, elapsed: "0:46",
                             remaining: "~1:49", onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                         ClipboardCard(

@@ -1,7 +1,8 @@
 import Foundation
 
 public enum Rate: Double, CaseIterable, Sendable, Hashable {
-    case x075 = 0.75, x1 = 1, x125 = 1.25, x15 = 1.5, x175 = 1.75, x2 = 2, x25 = 2.5, x3 = 3
+    case x05 = 0.5, x075 = 0.75, x1 = 1, x125 = 1.25, x15 = 1.5, x175 = 1.75, x2 = 2, x225 = 2.25,
+        x25 = 2.5, x275 = 2.75, x3 = 3
 
     public var factor: Double { rawValue }
 
@@ -11,10 +12,16 @@ public enum Rate: Double, CaseIterable, Sendable, Hashable {
         return s + "x"
     }
 
-    public var next: Rate {
+    /// One step up the band, and the top stays the top: these are the arrow keys'
+    /// steps, and a key held down should stop at the end rather than wrap to the other.
+    public var faster: Rate {
         let all = Rate.allCases
-        let i = all.firstIndex(of: self)!
-        return all[(i + 1) % all.count]
+        return all[min(all.firstIndex(of: self)! + 1, all.count - 1)]
+    }
+
+    public var slower: Rate {
+        let all = Rate.allCases
+        return all[max(all.firstIndex(of: self)! - 1, 0)]
     }
 
     /// AVSpeechUtterance rate: 0.5 is the default and 1.0 the maximum.

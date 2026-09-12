@@ -2,10 +2,11 @@ import AloudUI
 import Speech
 import SwiftUI
 
-/// Speed and the two pauses as sliders, opened from the tune button beside the speed.
-/// The speed slider steps through `Rate`'s cases rather than a continuous band,
-/// because the rate the player speaks at is one of those cases; the pauses are the
-/// seconds Settings offers, on the same band and step.
+/// Speed and the two pauses as sliders, opened from the speed button. The speed slider steps through `Rate`'s cases rather than a
+/// continuous band, because the rate the player speaks at is one of those cases; the
+/// pauses are the seconds Settings offers, on the same band and step. The value at the
+/// row's right is the slider's only label: the ends said 0.5x and 3x once, and the
+/// row was the busier for it.
 struct PacePopover: View {
     var model: AppModel
 
@@ -29,14 +30,8 @@ struct PacePopover: View {
         VStack(alignment: .leading, spacing: Space.m) {
             Text("Pace").font(Type.title)
             row("Speed", value: model.player.rate.label) {
-                Slider(
-                    value: rateIndex, in: 0...Double(Rate.allCases.count - 1), step: 1
-                ) {
+                Slider(value: rateIndex, in: 0...Double(Rate.allCases.count - 1), step: 1) {
                     Text("Speed")
-                } minimumValueLabel: {
-                    Text(Rate.allCases.first!.label).font(Type.caption)
-                } maximumValueLabel: {
-                    Text(Rate.allCases.last!.label).font(Type.caption)
                 }
             }
             row("After a sentence", value: Pauses.label(model.player.pauses.sentence)) {

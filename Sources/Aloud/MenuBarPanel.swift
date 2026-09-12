@@ -9,6 +9,7 @@ struct MenuBarPanel: View {
     var model: AppModel
     @Environment(\.openWindow) private var openWindow
     var player: Player { model.player }
+    @State private var showPace = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
@@ -19,18 +20,22 @@ struct MenuBarPanel: View {
             )
             .font(Type.caption).foregroundStyle(Ink.soft).lineLimit(Type.panelSentenceLines)
             HStack(spacing: Space.l) {
-                TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                TransportButton(.back, skipSeconds: AloudApp.skipStep) {
                     player.skip(seconds: -Player.skipSeconds)
                 }
                 TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                TransportButton(.forward, skipSeconds: AloudApp.skipStep) {
                     player.skip(seconds: Player.skipSeconds)
                 }
                 Spacer()
                 RateButton(
                     label: player.rate.label, all: Rate.allCases.map(\.label),
-                    onCycle: { model.setRate(player.rate.next) },
-                    onPick: { model.setRate(Rate.allCases[$0]) })
+                    onOpen: { showPace.toggle() },
+                    onPick: { model.setRate(Rate.allCases[$0]) }
+                )
+                .popover(isPresented: $showPace, arrowEdge: .bottom) {
+                    PacePopover(model: model)
+                }
             }
             .disabled(model.current == nil)
             Divider()
