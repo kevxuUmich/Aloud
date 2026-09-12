@@ -166,6 +166,15 @@ import Testing
         #expect(p.isPlaying)
     }
     @Test func theTransportSkipsTenSeconds() { #expect(Player.skipSeconds == 10) }
+    /// The arrow keys' step: ten of them from silent to full, clamped by the setter.
+    @Test func theVolumeStepIsATenth() {
+        let (p, _) = make()
+        p.volume = Player.fullVolume
+        p.volume += Player.volumeStep
+        #expect(p.volume == Player.fullVolume)
+        p.volume -= Player.volumeStep
+        #expect(abs(p.volume - 0.9) < 0.0001)
+    }
     @Test func skipLandsOnASentenceBoundary() {
         let (p, _) = make()
         // each 3-word sentence is 1.125 s at 1x, plus its pause; 10 s forward from 0

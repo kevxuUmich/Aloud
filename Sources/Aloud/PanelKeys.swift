@@ -1,13 +1,14 @@
 import AppKit
 
-/// What a bare key does while the clipboard panel is key. Enter and Space play,
-/// Escape dismisses, and the arrows step the speed. A table rather than a switch in
-/// the window's monitor so the mapping can be read, and tested, without a window.
+/// What a key does while the clipboard panel is key. Enter and Space play, Escape
+/// dismisses, the arrows step the volume and with Option held the speed. A table
+/// rather than a switch in the window's monitor so the mapping can be read, and
+/// tested, without a window.
 ///
-/// Bare keys only: a modifier makes the keystroke a menu's, and Cmd+Return or
-/// Ctrl+Space would be swallowed here rather than doing what they do everywhere else.
+/// Any other modifier makes the keystroke a menu's, and Cmd+Return or Ctrl+Space
+/// would be swallowed here rather than doing what they do everywhere else.
 enum PanelKeys {
-    enum Action: Equatable { case dismiss, play, faster, slower }
+    enum Action: Equatable { case dismiss, play, faster, slower, louder, quieter }
 
     /// The virtual key codes the monitor reads. Carbon's names, without Carbon.
     static let escape: UInt16 = 53
@@ -22,12 +23,13 @@ enum PanelKeys {
     private static let held: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
 
     static func action(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Action? {
-        guard modifiers.intersection(held).isEmpty else { return nil }
-        switch keyCode {
-        case escape: return .dismiss
-        case enter, keypadEnter, space: return .play
-        case up: return .faster
-        case down: return .slower
+        switch (keyCode, modifiers.intersection(held)) {
+        case (escape, []): return .dismiss
+        case (enter, []), (keypadEnter, []), (space, []): return .play
+        case (up, []): return .louder
+        case (down, []): return .quieter
+        case (up, .option): return .faster
+        case (down, .option): return .slower
         default: return nil
         }
     }

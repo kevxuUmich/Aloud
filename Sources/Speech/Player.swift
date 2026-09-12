@@ -50,6 +50,8 @@ public final class Player {
     }
     private var level = Player.fullVolume
     public static let fullVolume = 1.0
+    /// The arrow keys' step in the clipboard panel: ten from silent to full.
+    public static let volumeStep = 0.1
     /// The silences between sentences. A change is heard from the next sentence: the
     /// one in the air keeps the pause it was queued with, which is a beat at most.
     public var pauses: Pauses = .standard {

@@ -11,6 +11,10 @@ public enum Format {
         }
         return "\(m):" + String(format: "%02d", s)
     }
+    /// A level from 0 to 1 as the card says it: "60%".
+    public static func percent(_ level: Double) -> String {
+        "\(Int((level * 100).rounded()))%"
+    }
     public static func minutes(_ d: Duration) -> String {
         let m = max(1, Int((Double(max(0, d.components.seconds)) / 60).rounded()))
         return m == 1 ? "1 min" : "\(m) min"

@@ -1,5 +1,6 @@
 import AloudUI
 import AppKit
+import Speech
 import SwiftUI
 
 /// Owns the one floating panel and keeps it in step with `model.clipboardPanel`:
@@ -130,8 +131,8 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
 
     /// The keys in `PanelKeys`, through a local monitor: the panel is key while it is
     /// up and every keystroke reaches Aloud. The card's own buttons are the
-    /// transport's, and these are the shortcuts to them; the arrows step the speed,
-    /// which the card's second line shows.
+    /// transport's, and these are the shortcuts to them; the arrows step the volume,
+    /// and with Option the speed, which the card's second line shows.
     private func installKeys() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -143,6 +144,8 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
             case .play: self.press()
             case .faster: self.model.setRate(self.model.player.rate.faster)
             case .slower: self.model.setRate(self.model.player.rate.slower)
+            case .louder: self.model.setVolume(self.model.player.volume + Player.volumeStep)
+            case .quieter: self.model.setVolume(self.model.player.volume - Player.volumeStep)
             }
             return nil
         }
