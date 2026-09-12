@@ -57,7 +57,7 @@ struct ClipboardPanelView: View {
         case .needsFolder: "Pick a folder in Aloud first"
         case .preview(_, let failure?): failure
         case .preview(let p, nil), .playing(let p):
-            "From clipboard · ~\(Format.minutes(p.estimate(factor: player.rate.factor))) · \(p.words) words"
+            "From clipboard · \(player.rate.label) · ~\(Format.minutes(p.estimate(factor: player.rate.factor))) · \(p.words) words"
         }
     }
 

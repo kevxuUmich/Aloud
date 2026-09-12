@@ -552,7 +552,10 @@ import Vault
             let text = Array(repeating: "word", count: 320).joined(separator: " ")
             let p = try #require(ClipboardPreview(text: text))
             #expect(p.words == 320)
-            #expect(view.subtitle(for: .preview(p)) == "From clipboard · ~2 min · 320 words")
+            #expect(view.subtitle(for: .preview(p)) == "From clipboard · 1x · ~2 min · 320 words")
+            model.setRate(.x2)
+            #expect(view.subtitle(for: .playing(p)) == "From clipboard · 2x · ~1 min · 320 words")
+            model.player.rate = .x1
             #expect(view.title(for: .empty) == "Nothing to read")
             #expect(view.subtitle(for: .empty) == "The clipboard has no text")
             #expect(view.subtitle(for: .needsFolder(p)) == "Pick a folder in Aloud first")

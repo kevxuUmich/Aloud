@@ -111,11 +111,12 @@ public struct Gallery: View {
                 section("ClipboardCard") {
                     VStack(alignment: .leading, spacing: Space.l) {
                         ClipboardCard(
-                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
-                            transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            title: "It's been a fast year.",
+                            subtitle: "From clipboard · 1x · ~3 min · 412 words", transport: .ready, progress: 0, elapsed: "0:00", remaining: "~2:35",
                             onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                         ClipboardCard(
-                            title: "It's been a fast year.", subtitle: "From clipboard · ~3 min · 412 words",
+                            title: "It's been a fast year.",
+                            subtitle: "From clipboard · 1x · ~3 min · 412 words",
                             transport: .playing(isPlaying: true), progress: 0.3, elapsed: "0:46",
                             remaining: "~1:49", onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                         ClipboardCard(
