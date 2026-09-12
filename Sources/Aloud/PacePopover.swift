@@ -2,8 +2,7 @@ import AloudUI
 import Speech
 import SwiftUI
 
-/// Speed and the two pauses as sliders, opened from the speed button and the tune
-/// button beside it. The speed slider steps through `Rate`'s cases rather than a
+/// Speed and the two pauses as sliders, opened from the speed button. The speed slider steps through `Rate`'s cases rather than a
 /// continuous band, because the rate the player speaks at is one of those cases; the
 /// pauses are the seconds Settings offers, on the same band and step. The value at the
 /// row's right is the slider's only label: the ends said 0.5x and 3x once, and the
