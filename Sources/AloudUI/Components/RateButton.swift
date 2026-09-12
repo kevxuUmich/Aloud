@@ -16,14 +16,23 @@ public struct RateButton: View {
         self.onPick = onPick
     }
     public var body: some View {
-        Button(label, action: onOpen)
-            .font(Type.control)
-            .buttonStyle(.glass)
-            .contextMenu {
-                ForEach(Array(all.enumerated()), id: \.offset) { i, s in
-                    Button(s) { onPick(i) }
-                }
+        // Every step's label laid under the current one, hidden, so the button is as
+        // wide as the widest of them at every speed and the row does not shift as the
+        // speed changes.
+        Button(action: onOpen) {
+            ZStack {
+                ForEach(all, id: \.self) { Text($0).hidden() }
+                Text(label)
             }
-            .accessibilityLabel("Speed \(label)")
+            .monospacedDigit()
+        }
+        .font(Type.control)
+        .buttonStyle(.glass)
+        .contextMenu {
+            ForEach(Array(all.enumerated()), id: \.offset) { i, s in
+                Button(s) { onPick(i) }
+            }
+        }
+        .accessibilityLabel("Speed \(label)")
     }
 }
