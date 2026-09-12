@@ -20,11 +20,15 @@ A Mac already ships with good voices, so Aloud is the small piece that hands the
 Point Aloud at folders you already have.
 It reads `.md`, `.txt`, and `.pdf` in place and never copies or uploads them, so an Obsidian vault works as it stands.
 
-Or copy a paragraph in any app and press Option+Space.
+Or select a paragraph in any app and press Option+Space.
 A small card appears under the menu bar with the text's title, its length, and a Play button.
-Space plays it, and nothing is written to disk until you do.
+Option+Space again, or Space, plays it, and nothing is written to disk until then.
+Up and Down change the speed while the card is up.
 Text you have played before opens the note it already became rather than a duplicate.
-Option+Space again pauses the reading, and Space resumes it.
+Once it is reading, Option+Space pauses it, and Space resumes it.
+
+Reading the selection needs the Accessibility permission, which Aloud asks for the first time.
+Without it, and in the few apps that keep their selection to themselves, the card reads the clipboard instead, so copying always works.
 
 ## What it does
 
@@ -53,7 +57,7 @@ Aloud needs macOS 26.
     make dev
 
 That builds the app and opens it.
-Add a folder, or copy some text and press Option+Space.
+Add a folder, or select some text and press Option+Space.
 
 ### The signed build
 

@@ -14,6 +14,9 @@ struct SettingsView: View {
     @Bindable var model: AppModel
     @AppStorage("skipCode") private var skipCode = true
     @AppStorage("showMenuBar") private var showMenuBar = true
+    /// Read again each time Aloud comes to the front, which is how it comes back from
+    /// the System Settings pane where the grant is given.
+    @State private var canReadSelection = Selection.isTrusted
 
     var body: some View {
         Form {
@@ -129,7 +132,14 @@ struct SettingsView: View {
                     value: pauseBinding(\.paragraph), in: Pauses.range, step: Pauses.step)
             }
             Section("Hotkey") {
-                KeyboardShortcuts.Recorder("Paste and play:", name: .pasteAndPlay)
+                KeyboardShortcuts.Recorder("Read the selection or the clipboard:", name: .pasteAndPlay)
+                LabeledContent("Reading the selection") {
+                    Text(canReadSelection ? "Allowed" : "Needs the Accessibility permission")
+                        .foregroundStyle(Ink.soft)
+                }
+                if !canReadSelection {
+                    Button("Open Accessibility Settings...") { Selection.openSettings() }
+                }
             }
             Section("General") {
                 Toggle("Show in the menu bar", isOn: $showMenuBar)
@@ -145,6 +155,9 @@ struct SettingsView: View {
         // has to be extracted again; the cache is keyed by the options, so it misses of
         // its own accord and nothing needs invalidating.
         .onChange(of: skipCode) { model.reloadCurrent() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) {
+            _ in canReadSelection = Selection.isTrusted
+        }
     }
 
     /// One pause as seconds, written back through the model's single writer.
