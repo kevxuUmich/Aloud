@@ -17,8 +17,12 @@ enum PanelKeys {
     static let up: UInt16 = 126
     static let down: UInt16 = 125
 
+    /// The flags a listener holds. An arrow key's own event carries `.function` and
+    /// `.numericPad` with nothing held at all, so those two are not modifiers here.
+    private static let held: NSEvent.ModifierFlags = [.shift, .control, .option, .command]
+
     static func action(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Action? {
-        guard modifiers.intersection(.deviceIndependentFlagsMask).isEmpty else { return nil }
+        guard modifiers.intersection(held).isEmpty else { return nil }
         switch keyCode {
         case escape: return .dismiss
         case enter, keypadEnter, space: return .play

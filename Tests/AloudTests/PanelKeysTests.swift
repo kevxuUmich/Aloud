@@ -15,6 +15,13 @@ import Testing
         #expect(PanelKeys.action(keyCode: PanelKeys.down, modifiers: []) == .slower)
     }
 
+    /// An arrow key's event carries the function and numeric-pad flags of its own
+    /// accord; they are the key's, not a modifier the listener held.
+    @Test func arrowsArriveWithTheirOwnFlags() {
+        #expect(PanelKeys.action(keyCode: PanelKeys.up, modifiers: [.function, .numericPad]) == .faster)
+        #expect(PanelKeys.action(keyCode: PanelKeys.down, modifiers: [.function, .numericPad]) == .slower)
+    }
+
     /// A modifier makes the keystroke a menu's, so it is left alone; so is any other key.
     @Test func modifiedAndOtherKeysAreLeftAlone() {
         #expect(PanelKeys.action(keyCode: PanelKeys.space, modifiers: [.command]) == nil)
