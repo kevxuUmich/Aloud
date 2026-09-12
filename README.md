@@ -33,9 +33,9 @@ Option+Space again pauses the reading, and Space resumes it.
 - Highlights the sentence and the word being read. Click any sentence to jump to it.
 - Remembers where you stopped in every document and marks it Finished at the end.
 - Bookmarks a document from the reader or its card.
-- Offers eight speeds from 0.75x to 3x. A change takes effect on the current sentence.
+- Offers ten speeds from 0.75x to 3x, a quarter apart. A change takes effect on the current sentence.
 - Lets you preview every voice on the Mac before picking one, with seven recommended voices at the top of the list.
-- Skips back and forward 15 seconds, always to a sentence boundary.
+- Skips back and forward 10 seconds, always to a sentence boundary.
 - Reads in sans or serif type, at five sizes, in light or dark.
 - Edits `.md` and `.txt` in place, saving on Done, on blur, and on Cmd+S.
 - Keeps reading with the window closed. There is a menu bar player, the media keys and AirPods work, and the Now Playing card in Control Center shows what is playing. It pauses when you unplug your headphones.

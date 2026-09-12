@@ -65,11 +65,11 @@ public struct ClipboardCard: View {
                             .lineLimit(Type.singleLine)
                         Spacer(minLength: Space.none)
                         HStack(spacing: Space.xl) {
-                            TransportButton(.back15, skipSeconds: skipSeconds, action: onBack)
+                            TransportButton(.back, skipSeconds: skipSeconds, action: onBack)
                                 .disabled(!isPlayer)
                             TransportButton(showsPause ? .pause : .play, action: onPlay)
                                 .disabled(transport == .disabled)
-                            TransportButton(.forward15, skipSeconds: skipSeconds, action: onForward)
+                            TransportButton(.forward, skipSeconds: skipSeconds, action: onForward)
                                 .disabled(!isPlayer)
                         }
                     }

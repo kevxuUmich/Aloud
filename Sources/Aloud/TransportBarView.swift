@@ -39,11 +39,11 @@ struct TransportBarView: View {
                     title
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: Space.xl) {
-                        TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                        TransportButton(.back, skipSeconds: AloudApp.skipStep) {
                             player.skip(seconds: -Player.skipSeconds)
                         }
                         TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                        TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                        TransportButton(.forward, skipSeconds: AloudApp.skipStep) {
                             player.skip(seconds: Player.skipSeconds)
                         }
                     }

@@ -20,11 +20,25 @@ import Testing
     @Test func oneXIsTheSystemDefaultRate() {
         #expect(Rate.x1.appleRate == AVSpeechUtteranceDefaultSpeechRate)
     }
-    @Test func eightSteps() { #expect(Rate.allCases.count == 8) }
+    /// A quarter apart from end to end, so an arrow key's step is the same step
+    /// everywhere on the band.
+    @Test func tenStepsAQuarterApart() {
+        #expect(Rate.allCases.count == 10)
+        let gaps = zip(Rate.allCases.dropFirst(), Rate.allCases).map { $0.factor - $1.factor }
+        #expect(gaps.allSatisfy { abs($0 - 0.25) < 0.0001 })
+    }
     @Test func labelsAreLocaleIndependent() {
         #expect(
             Rate.allCases.map(\.label) == [
-                "0.75x", "1x", "1.25x", "1.5x", "1.75x", "2x", "2.5x", "3x",
+                "0.75x", "1x", "1.25x", "1.5x", "1.75x", "2x", "2.25x", "2.5x", "2.75x", "3x",
             ])
+    }
+    /// The arrow keys' steps: one case up or down, and the ends stay put rather than
+    /// wrapping, since a key held down should not jump from fastest to slowest.
+    @Test func fasterAndSlowerStopAtTheEnds() {
+        #expect(Rate.x1.faster == .x125)
+        #expect(Rate.x125.slower == .x1)
+        #expect(Rate.x3.faster == .x3)
+        #expect(Rate.x075.slower == .x075)
     }
 }

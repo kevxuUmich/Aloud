@@ -19,11 +19,11 @@ struct MenuBarPanel: View {
             )
             .font(Type.caption).foregroundStyle(Ink.soft).lineLimit(Type.panelSentenceLines)
             HStack(spacing: Space.l) {
-                TransportButton(.back15, skipSeconds: AloudApp.skipStep) {
+                TransportButton(.back, skipSeconds: AloudApp.skipStep) {
                     player.skip(seconds: -Player.skipSeconds)
                 }
                 TransportButton(player.isPlaying ? .pause : .play) { player.toggle() }
-                TransportButton(.forward15, skipSeconds: AloudApp.skipStep) {
+                TransportButton(.forward, skipSeconds: AloudApp.skipStep) {
                     player.skip(seconds: Player.skipSeconds)
                 }
                 Spacer()

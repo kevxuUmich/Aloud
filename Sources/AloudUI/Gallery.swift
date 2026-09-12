@@ -51,10 +51,10 @@ public struct Gallery: View {
                 }
                 section("TransportButton") {
                     HStack {
-                        TransportButton(.back15) {}
+                        TransportButton(.back) {}
                         TransportButton(.play) {}
                         TransportButton(.pause) {}
-                        TransportButton(.forward15) {}
+                        TransportButton(.forward) {}
                     }
                 }
                 section("VolumeControl") {

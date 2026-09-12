@@ -6,7 +6,7 @@ import Prose
 public final class Player {
     /// Nonisolated because it is a constant, and the media-key bindings read it from
     /// outside the main actor to set the transport's skip interval.
-    public nonisolated static let skipSeconds: Double = 15
+    public nonisolated static let skipSeconds: Double = 10
 
     public private(set) var script: Script = .empty
     public private(set) var sentenceIndex = 0
