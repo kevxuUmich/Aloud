@@ -193,7 +193,10 @@ public final class Player {
         sentenceOffset = offset
         sentenceAnchor = .now - offset
         startTicking()
-        let pause = script.endsParagraph(at: sentenceIndex) ? pauses.paragraph : pauses.sentence
+        // The last sentence has none, as in the timeline: nothing follows it to pause before.
+        let pause =
+            sentenceIndex + 1 < script.sentences.count
+            ? (script.endsParagraph(at: sentenceIndex) ? pauses.paragraph : pauses.sentence) : .zero
         provider.speak(
             spoken, voice: voice, rate: rate, pause: pause, volume: volume,
             onWord: { [weak self] ns in

@@ -806,6 +806,21 @@ final class AppModel {
         }
     }
 
+    /// Opens a document and plays it, once it has loaded: `open` extracts in a task of
+    /// its own, and a `play()` beside it spoke a moment of whatever was loaded before,
+    /// which the load then stopped, so the document opened silent. Nothing plays when
+    /// another open has taken its place in the meantime. The task is returned so a
+    /// caller can wait for it.
+    @discardableResult
+    func play(_ doc: Document) -> Task<Void, Never> {
+        let opening = open(doc)
+        return Task {
+            await opening.value
+            guard current?.id == doc.id else { return }
+            player.play()
+        }
+    }
+
     /// The name of the folder that holds a document, for the card's subtitle.
     ///
     /// Two passes, in the shape `document(at:)` has above. The straight `id` compare

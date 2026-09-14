@@ -146,7 +146,7 @@ import Testing
     @Test func eachSentenceCarriesItsPause() {
         let fake = FakeVoiceProvider()
         let p = Player(provider: fake)
-        let source = "One two three.\n\nFour five six. Seven eight nine."
+        let source = "One two three.\n\nFour five six. Seven eight nine. Ten eleven twelve."
         p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
         p.play()
         #expect(fake.spoken.last?.pause == Pauses.standard.paragraph)
@@ -157,6 +157,19 @@ import Testing
         #expect(p.timeline.duration(at: 1) == .seconds(1.125) + .seconds(1))
         fake.finishCurrent()
         #expect(fake.spoken.last?.pause == .seconds(1))
+    }
+    /// The last sentence has no pause, as it has none in the timeline: nothing follows
+    /// it, and a silence held after it would only hold back the end of the document.
+    @Test func theLastSentenceCarriesNoPause() {
+        let fake = FakeVoiceProvider()
+        let p = Player(provider: fake)
+        let source = "One two three.\n\nFour five six."
+        p.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+        p.play()
+        #expect(fake.spoken.last?.pause == Pauses.standard.paragraph)
+        fake.finishCurrent()
+        #expect(fake.spoken.last?.text == "Four five six.")
+        #expect(fake.spoken.last?.pause == .zero)
     }
     @Test func seekWhilePlayingRestartsAtTheTarget() {
         let (p, fake) = make()
