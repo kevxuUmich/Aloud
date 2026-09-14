@@ -3,7 +3,8 @@ import Foundation
 
 @MainActor
 public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesizerDelegate {
-    private let synth = AVSpeechSynthesizer()
+    private let synth: AVSpeechSynthesizer
+    private let sleep: @Sendable (Duration) async throws -> Void
     /// `voices` is read on every popover render and was read on every sentence, and
     /// `speechVoices()` is not cheap. The cache is nonisolated because the protocol
     /// requirement is, so it carries its own lock.
@@ -17,8 +18,26 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     /// reference is held rather than just its `ObjectIdentifier` so a freed
     /// utterance's address cannot be reused under the comparison.
     private var current: AVSpeechUtterance?
+    /// The silence to leave once `current`'s words have ended, before its `onFinish`.
+    private var pause: Duration = .zero
+    /// The wait for that silence. It is held here rather than handed to the synthesizer
+    /// as the utterance's `postUtteranceDelay`: an `AVSpeechSynthesizer` stopped while
+    /// the next utterance waits out that delay never speaks again, and a pause, a skip
+    /// or a document opened between two sentences is exactly such a stop. After one,
+    /// nothing more was heard until the app was quit. Internal so the suite can wait
+    /// on it.
+    private(set) var pauseTask: Task<Void, Never>?
 
-    public override init() {
+    public override convenience init() {
+        self.init(synthesizer: AVSpeechSynthesizer())
+    }
+
+    init(
+        synthesizer: AVSpeechSynthesizer,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        synth = synthesizer
+        self.sleep = sleep
         super.init()
         synth.delegate = self
         // Installing or removing a voice in System Settings is the one thing that can
@@ -52,26 +71,29 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
         _ text: String, voice: Voice?, rate: Rate, pause: Duration, volume: Double,
         onWord: @escaping @MainActor (NSRange) -> Void, onFinish: @escaping @MainActor () -> Void
     ) {
+        cancelPause()
         let u = AVSpeechUtterance(string: text)
         u.rate = rate.appleRate
         u.volume = Float(volume)
-        u.postUtteranceDelay = pause.seconds
         if let id = voice?.id { u.voice = AVSpeechSynthesisVoice(identifier: id) }
         self.onWord = onWord
         self.onFinish = onFinish
+        self.pause = pause
         current = u
         synth.speak(u)
     }
 
-    /// A preview interrupts whatever is being said and speaks for itself. It leaves
-    /// `onWord` and `onFinish` alone: the utterance it cancelled belongs to a `Player`,
-    /// which will speak the sentence again when it is next asked to.
+    /// A preview interrupts whatever is being said, or the silence after it, and
+    /// speaks for itself. The callbacks go with what it interrupted: that utterance
+    /// belongs to a `Player`, which will speak the sentence again when it is next asked to.
     public func preview(_ voice: Voice) {
         // Dropped before the cancel, not after: the delegate's didCancel arrives on
         // another turn, and a callback still installed when it does belongs to an
         // utterance that is no longer being spoken.
         onWord = nil
         onFinish = nil
+        cancelPause()
+        pause = .zero
         synth.stopSpeaking(at: .immediate)
         let u = AVSpeechUtterance(string: VoicePreview.text)
         u.rate = Rate.x1.appleRate
@@ -81,6 +103,7 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
     }
 
     public func stop() {
+        cancelPause()
         onWord = nil
         onFinish = nil
         current = nil
@@ -115,8 +138,28 @@ public final class AppleVoiceProvider: NSObject, VoiceProvider, AVSpeechSynthesi
             let f = self.onFinish
             self.onFinish = nil
             self.onWord = nil
+            self.finish(after: self.pause, f)
+        }
+    }
+
+    /// A finished utterance's `onFinish`, once its pause has passed, or at once with no
+    /// pause. A stop, a preview or a new utterance in the meantime cancels it.
+    private func finish(after pause: Duration, _ f: (@MainActor () -> Void)?) {
+        guard pause > .zero else {
+            f?()
+            return
+        }
+        pauseTask = Task { [sleep] in
+            try? await sleep(pause)
+            guard !Task.isCancelled else { return }
+            self.pauseTask = nil
             f?()
         }
+    }
+
+    private func cancelPause() {
+        pauseTask?.cancel()
+        pauseTask = nil
     }
 }
 

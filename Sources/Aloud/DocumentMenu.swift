@@ -7,10 +7,7 @@ extension View {
     func documentMenu(_ model: AppModel, _ doc: Document) -> some View {
         self
             .contextMenu {
-                Button("Play") {
-                    model.open(doc)
-                    model.player.play()
-                }
+                Button("Play") { model.play(doc) }
                 Button(model.isBookmarked(doc) ? "Remove Bookmark" : "Bookmark") {
                     model.toggleBookmark(doc)
                 }

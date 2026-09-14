@@ -154,6 +154,37 @@ import Vault
         }
     }
 
+    /// Play on a document's menu plays that document. The open is a task of its own,
+    /// so a `play()` beside it ran before the document had loaded: it spoke a moment of
+    /// whatever was loaded before, the load that followed stopped it, and the chosen
+    /// document opened silent.
+    @Test func playOnADocumentPlaysItOnceItHasOpened() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            let b = try document("Bravo one. Bravo two.", named: "b.md", in: dir)
+            await model.open(a).value
+            model.player.play()
+            await model.play(b).value
+            #expect(model.current?.id == b.id)
+            #expect(model.player.isPlaying)
+            let fake = try #require(model.provider as? FakeVoiceProvider)
+            #expect(fake.spoken.map(\.text) == ["Alpha one.", "Bravo one."])
+        }
+    }
+
+    /// Play on the document already open plays it from where the reader is.
+    @Test func playOnTheOpenDocumentPlaysItWhereItIs() async throws {
+        try await withModel { model, dir in
+            let a = try document("Alpha one. Alpha two.", named: "a.md", in: dir)
+            await model.open(a).value
+            model.player.seek(to: 1)
+            await model.play(a).value
+            #expect(model.player.isPlaying)
+            let fake = try #require(model.provider as? FakeVoiceProvider)
+            #expect(fake.spoken.map(\.text) == ["Alpha two."])
+        }
+    }
+
     /// Renaming the open note rewrites its title line, and the document the model
     /// holds carries the new title without being reopened from the start.
     @Test func renamingTheOpenNoteRetitlesItInPlace() async throws {
