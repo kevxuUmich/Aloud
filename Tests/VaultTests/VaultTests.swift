@@ -112,3 +112,47 @@ import Testing
         await #expect(throws: VaultError.self) { try await vault.rename(doc, to: "  ") }
     }
 }
+
+/// A note the panel wrote keeps where its text came from, in front matter the scanner
+/// reads back and the text is compared without.
+@Suite struct VaultOriginTests {
+    func tempRoot() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+    let safari = Origin(
+        app: "Safari", bundle: "com.apple.Safari",
+        page: .init(url: URL(string: "https://example.com/a")!, title: "Example"))
+
+    @Test func theOriginIsWrittenAsFrontMatterAndScannedBack() async throws {
+        let root = try tempRoot()
+        let vault = Vault(roots: [root])
+        let url = try await vault.makeNote(text: "# Hello\n\nBody.", origin: safari, in: root)
+        #expect(try String(contentsOf: url, encoding: .utf8) == safari.frontMatter + "# Hello\n\nBody.")
+        let doc = try await vault.tree()[0].documents[0]
+        #expect(doc.origin == safari)
+        #expect(doc.title == "Hello")
+        #expect(doc.preview == "# Hello\n\nBody.")
+    }
+
+    @Test func theSameTextFromAnywhereIsTheNoteAlreadyWritten() async throws {
+        let root = try tempRoot()
+        let vault = Vault(roots: [root])
+        let first = try await vault.makeNote(text: "Hello.\n\nMore.", origin: safari, in: root)
+        let notes = Origin(app: "Notes", bundle: "com.apple.Notes")
+        #expect(try await vault.makeNote(text: "Hello.\n\nMore.", origin: notes, in: root) == first)
+        #expect(try await vault.makeNote(text: "Hello.\n\nMore.", in: root) == first)
+        #expect(try await vault.tree()[0].documents[0].origin == safari)
+    }
+
+    @Test func aRenameKeepsTheOrigin() async throws {
+        let root = try tempRoot()
+        let vault = Vault(roots: [root])
+        let url = try await vault.makeNote(text: "# Old\n\nBody.", origin: safari, in: root)
+        let doc = try await vault.tree()[0].documents[0]
+        let renamed = try await vault.rename(doc, to: "New")
+        #expect(renamed.origin == safari)
+        #expect(try String(contentsOf: url, encoding: .utf8) == safari.frontMatter + "# New\n\nBody.")
+    }
+}

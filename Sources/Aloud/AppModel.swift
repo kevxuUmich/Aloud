@@ -36,6 +36,9 @@ enum NoteWriteError: LocalizedError {
 @Observable @MainActor
 final class AppModel {
     let vault: Vault
+    /// The clipboard and where its text came from, watched from `start()` so a copy
+    /// is credited to the app it was made in.
+    let clipboard = Clipboard()
     let player: Player
     /// The picker needs the installed set, and it is the same provider the player
     /// speaks through, so a preview and a sentence never come from two synthesizers.
@@ -244,6 +247,7 @@ final class AppModel {
             }
         }
         installHotkey()
+        clipboard.watch()
         Task { await refresh() }
         watch()
         Task { await restoreLast() }
@@ -264,17 +268,19 @@ final class AppModel {
     /// The selection needs the Accessibility grant. Without it the first press ever
     /// asks, once, and this press and every one until it is given are the clipboard's.
     func previewSelectionOrClipboard() {
-        let selection: String?
-        if Selection.isTrusted {
-            selection = Selection.text()
-        } else {
-            selection = nil
-            if !Defaults.askedForSelection {
-                Defaults.askedForSelection = true
-                Selection.ask()
-            }
+        if !Selection.isTrusted, !Defaults.askedForSelection {
+            Defaults.askedForSelection = true
+            Selection.ask()
         }
-        preview(selection: selection, clipboard: NSPasteboard.general.string(forType: .string))
+        let selection = Selection.read()
+        let clip = clipboard.read()
+        preview(
+            selection.text.flatMap {
+                ClipboardPreview(text: $0, source: .selection, origin: selection.origin)
+            }
+                ?? clip.text.flatMap {
+                    ClipboardPreview(text: $0, source: .clipboard, origin: clip.origin)
+                })
     }
 
     /// The clipboard alone, which is what most of the tests have.
@@ -283,8 +289,16 @@ final class AppModel {
         preview(selection: nil, clipboard: text)
     }
 
-    /// The panel's state from text already in hand. The selection wins when there is
-    /// one: it is what the listener is looking at, and the clipboard may be old.
+    /// Both as bare text, with no origin. The selection wins when there is one: it
+    /// is what the listener is looking at, and the clipboard may be old.
+    @discardableResult
+    func preview(selection: String?, clipboard: String?) -> Task<Void, Never>? {
+        preview(
+            selection.flatMap { ClipboardPreview(text: $0, source: .selection) }
+                ?? clipboard.flatMap { ClipboardPreview(text: $0, source: .clipboard) })
+    }
+
+    /// The panel's state from the text the hotkey chose, or nil for none.
     ///
     /// The same text as the panel already shows is the second press. A preview plays,
     /// and the task is returned so a test can wait for the write; it is one press
@@ -298,11 +312,8 @@ final class AppModel {
     /// another app it is the one key that reaches the player at all. It pauses the
     /// same with the panel still up: the hotkey is the stop, and Space is the toggle.
     @discardableResult
-    func preview(selection: String?, clipboard: String?) -> Task<Void, Never>? {
+    func preview(_ new: ClipboardPreview?) -> Task<Void, Never>? {
         emptyHoldTask?.cancel()
-        let new =
-            selection.flatMap { ClipboardPreview(text: $0, source: .selection) }
-            ?? clipboard.flatMap { ClipboardPreview(text: $0, source: .clipboard) }
         // The text the panel already shows is the second press, so the panel stays as
         // it is and the write in the air, if there is one, still belongs to it.
         if let new, clipboardPanel?.preview?.text == new.text {
@@ -347,7 +358,7 @@ final class AppModel {
         let task = Task {
             do {
                 try await writeNote(
-                    text: p.text, in: folder, andPlay: true, subtitle: p.source.label)
+                    text: p.text, origin: p.origin, in: folder, andPlay: true, subtitle: p.label)
                 // A stale task must never clear a live one: whichever of these guards
                 // fires belongs to a Play that is no longer the panel's, so it returns
                 // before `previewPlay = nil` below, leaving the live task's own slot alone.
@@ -620,18 +631,18 @@ final class AppModel {
     /// Clipboard text becomes a note in the default folder and opens ready to play.
     /// The window's Cmd+Shift+V, which writes at once: it is a gesture made inside Aloud.
     func pasteNote(andPlay: Bool = false) {
-        guard let p = ClipboardPreview(text: NSPasteboard.general.string(forType: .string) ?? "")
-        else {
-            notice = "The clipboard has no text"
+        let clip = clipboard.read()
+        guard let p = ClipboardPreview(text: clip.text ?? "", origin: clip.origin) else {
+            notice = clip.concealed ? "The clipboard is hidden" : "The clipboard has no text"
             return
         }
-        pasteNote(text: p.text, andPlay: andPlay)
+        pasteNote(text: p.text, origin: p.origin, andPlay: andPlay)
     }
 
     /// The same note from text already in hand. The task is returned so a test can
     /// wait for the write and the load; nil when there is no folder to write into.
     @discardableResult
-    func pasteNote(text: String, andPlay: Bool = false) -> Task<Void, Never>? {
+    func pasteNote(text: String, origin: Origin? = nil, andPlay: Bool = false) -> Task<Void, Never>? {
         guard let folder = noteFolder else {
             notice = "Pick a folder to read from first"
             return nil
@@ -640,7 +651,8 @@ final class AppModel {
             do {
                 // No subtitle: the window's paste is a document like any other, and its
                 // card carries the folder's name. "From clipboard" is the panel's line.
-                try await writeNote(text: text, in: folder, andPlay: andPlay, subtitle: nil)
+                try await writeNote(
+                    text: text, origin: origin, in: folder, andPlay: andPlay, subtitle: nil)
             } catch {
                 notice = NoteWriteError.copy(for: error)
             }
@@ -659,9 +671,9 @@ final class AppModel {
     /// swallowed it would take the success branch over a note that never opened, and
     /// the panel would show a mini player over nothing.
     private func writeNote(
-        text: String, in folder: URL, andPlay: Bool, subtitle: String?
+        text: String, origin: Origin?, in folder: URL, andPlay: Bool, subtitle: String?
     ) async throws {
-        let url = try await vault.makeNote(text: text, in: folder)
+        let url = try await vault.makeNote(text: text, origin: origin, in: folder)
         await refresh()
         guard let doc = document(at: url) else { throw NoteWriteError.notFound }
         await open(doc, subtitle: subtitle).value
@@ -908,17 +920,27 @@ final class AppModel {
 
     /// The file goes to the Trash and the library rescans; a document being read is
     /// paused first, so the player is not left talking about a file that is gone.
-    func trash(_ doc: Document) {
-        do {
-            _ = try Trash.move(doc)
-            if current?.id == doc.id { player.pause() }
-            Task { await refresh() }
-        } catch {
-            notice = "Could not move \(doc.title) to the Trash: \(error.localizedDescription)"
+    func trash(_ doc: Document) { trash([doc]) }
+
+    /// Several at once, with one refresh after them all. The first that cannot go is
+    /// reported and the rest still go: one file open elsewhere should not keep the
+    /// others out of the Trash.
+    func trash(_ docs: [Document]) {
+        var failure: String?
+        for doc in docs {
+            do {
+                _ = try Trash.move(doc)
+                if current?.id == doc.id { player.pause() }
+            } catch {
+                failure = failure ?? "Could not move \(doc.title) to the Trash: \(error.localizedDescription)"
+            }
         }
+        if let failure { notice = failure }
+        Task { await refresh() }
     }
 
-    func reveal(_ doc: Document) { NSWorkspace.shared.activateFileViewerSelecting([doc.url]) }
+    func reveal(_ doc: Document) { reveal([doc]) }
+    func reveal(_ docs: [Document]) { NSWorkspace.shared.activateFileViewerSelecting(docs.map(\.url)) }
 
     /// The X on the transport bar: the player is silenced and emptied, nothing is
     /// loaded, and the bar says so. A reader standing in the document has nothing left
@@ -961,25 +983,37 @@ final class AppModel {
     }
 
     func toggleFinished(_ doc: Document) {
-        let p = progress.progress(for: doc.url)
-        progress.set(
-            PlaybackProgress(
-                sentenceIndex: p?.sentenceIndex ?? 0, finished: !(p?.finished ?? false),
-                lastPlayed: .now, bookmarked: p?.bookmarked ?? false),
-            for: doc.url)
+        setFinished(!(progress.progress(for: doc.url)?.finished ?? false), for: [doc])
+    }
+
+    /// The same mark on several: a selection marked finished together is marked
+    /// finished on every one, whatever each was before.
+    func setFinished(_ finished: Bool, for docs: [Document]) {
+        for doc in docs {
+            let p = progress.progress(for: doc.url)
+            progress.set(
+                PlaybackProgress(
+                    sentenceIndex: p?.sentenceIndex ?? 0, finished: finished,
+                    lastPlayed: .now, bookmarked: p?.bookmarked ?? false),
+                for: doc.url)
+        }
         marksVersion += 1
     }
 
     /// The bookmark on a document, a flag of the reader's own. It is kept with the
     /// place so it survives a rename with it, and it is not the place: the reading
     /// can move on, finish and start again and the bookmark is where it was.
-    func toggleBookmark(_ doc: Document) {
-        let p = progress.progress(for: doc.url)
-        progress.set(
-            PlaybackProgress(
-                sentenceIndex: p?.sentenceIndex ?? 0, finished: p?.finished ?? false,
-                lastPlayed: p?.lastPlayed ?? .distantPast, bookmarked: !(p?.bookmarked ?? false)),
-            for: doc.url)
+    func toggleBookmark(_ doc: Document) { setBookmarked(!isBookmarked(doc), for: [doc]) }
+
+    func setBookmarked(_ bookmarked: Bool, for docs: [Document]) {
+        for doc in docs {
+            let p = progress.progress(for: doc.url)
+            progress.set(
+                PlaybackProgress(
+                    sentenceIndex: p?.sentenceIndex ?? 0, finished: p?.finished ?? false,
+                    lastPlayed: p?.lastPlayed ?? .distantPast, bookmarked: bookmarked),
+                for: doc.url)
+        }
         marksVersion += 1
     }
 
@@ -1119,22 +1153,41 @@ final class AppModel {
         }
     }
 
+    /// What the restore reads from the file itself: that it is still there, its date
+    /// and its head. Off the main actor, because the first touch of a file in a folder
+    /// the system guards - Documents, iCloud Drive - can wait on the system for seconds
+    /// after a launch, and a stat on the main actor froze the window for all of it: no
+    /// bar, and no first-scan spinner either, over a scan that had already come back.
+    ///
+    /// The date is the file's own, not this moment: `followCurrentFile` decides whether
+    /// the document has changed by comparing it against the tree's copy, and `.now` is
+    /// never what the scanner reads, so the first refresh after launch reloaded the
+    /// restored document and started its sentence again out loud.
+    @concurrent private nonisolated static func restoredFile(at url: URL) async -> RestoredFile? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return RestoredFile(
+            modified: (attributes?[.modificationDate] as? Date) ?? .distantPast,
+            head: Scanner.headText(of: url))
+    }
+
+    private struct RestoredFile {
+        let modified: Date
+        let head: String
+    }
+
     private func restoreLast() async {
         guard let path = progress.lastPlayedPath() else { return }
         let url = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: path), let type = DocumentType(url: url)
-        else { return }
+        guard let type = DocumentType(url: url), let file = await Self.restoredFile(at: url) else {
+            return
+        }
         let kind = SourceKind(type)
-        // The file's own date, not this moment: `followCurrentFile` decides whether the
-        // document has changed by comparing this against the tree's copy, and `.now` is
-        // never what the scanner reads, so the first refresh after launch reloaded the
-        // restored document and started its sentence again out loud.
-        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
-        let modified = (attributes?[.modificationDate] as? Date) ?? .distantPast
         if let script = try? await extraction.script(for: url, kind: kind, options: extractOptions) {
             let doc = Document(
                 url: url, title: Title.from(text: script.source, fallback: url.lastPathComponent),
-                preview: "", modified: modified, bytes: 0, type: type)
+                preview: "", modified: file.modified, bytes: 0, type: type,
+                origin: Origin(frontMatterOf: file.head))
             current = doc
             // The same rule open() uses: a finished document starts again at the top.
             let p = progress.progress(for: url)

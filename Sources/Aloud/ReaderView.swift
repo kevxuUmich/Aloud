@@ -11,6 +11,7 @@ struct ReaderView: View {
     @AppStorage(ReaderSize.key) private var sizeIndex = Type.readerDefaultIndex
     @AppStorage(ReaderTypeface.key) private var typefaceRaw = ReaderTypeface.standard.rawValue
     @AppStorage(Appearance.key) private var appearanceRaw = Appearance.standard.rawValue
+    @Environment(\.noticeInset) private var noticeInset
     @State private var follow = true
     @State private var editing = false
     @State private var draft = ""
@@ -44,6 +45,7 @@ struct ReaderView: View {
                     word: isCurrent ? nsRange(player.wordRange) : nil,
                     follow: follow && player.isPlaying,
                     editable: editing,
+                    topInset: noticeInset,
                     onClick: { offset in
                         guard let i = player.script.sentenceIndex(atUTF16Offset: offset) else { return }
                         follow = true
@@ -72,6 +74,7 @@ struct ReaderView: View {
             ToolbarItem(placement: .navigation) {
                 EditableTitle(
                     title: document.title,
+                    icon: OriginIcon.image(for: document.origin),
                     requested: model.renaming?.id == document.id,
                     onBegan: { model.renaming = nil }
                 ) { new in

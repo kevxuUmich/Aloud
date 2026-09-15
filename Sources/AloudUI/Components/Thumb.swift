@@ -25,6 +25,12 @@ public struct Thumb: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .padding(inset)
             .background(Ink.thumbPaper, in: .rect(cornerRadius: radius))
+            // The paper's edge. White on the dark window is its own edge, and white on
+            // the light one is no edge at all: the words floated on the window, and a
+            // PDF's page, which has no words on it, was not there.
+            .overlay {
+                RoundedRectangle(cornerRadius: radius).strokeBorder(Ink.thumbEdge, lineWidth: Size.hairline)
+            }
             .clipped()
             .accessibilityHidden(true)
     }

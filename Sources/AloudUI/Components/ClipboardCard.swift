@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
 /// The clipboard panel's drawing, laid out like the system's Now Playing card: a
-/// square glyph plate at the left, the title and a subtitle at the right, the
-/// transport under them and the scrubber under that. It knows nothing about the
-/// player; the app hands it strings and closures, so the gallery can show every state.
+/// square plate at the left, the title and a subtitle at the right, the transport
+/// under them and the scrubber under that. The plate is the icon of the app the text
+/// came from, as Now Playing shows the app that is playing, and Aloud's own mark when
+/// that is not known. It knows nothing about the player; the app hands it strings and
+/// closures, so the gallery can show every state.
 public struct ClipboardCard: View {
     public enum Transport: Equatable {
         /// Nothing to play: the empty clipboard, or no folder to write into.
@@ -15,6 +18,7 @@ public struct ClipboardCard: View {
     }
     let title: String
     let subtitle: String
+    let icon: NSImage?
     let transport: Transport
     let progress: Double
     let elapsed: String
@@ -26,7 +30,7 @@ public struct ClipboardCard: View {
     let onSeek: (Double) -> Void
 
     public init(
-        title: String, subtitle: String, transport: Transport,
+        title: String, subtitle: String, icon: NSImage? = nil, transport: Transport,
         progress: Double, elapsed: String, remaining: String,
         skipSeconds: Int = TransportButton.defaultSkipSeconds,
         onPlay: @escaping () -> Void, onBack: @escaping () -> Void, onForward: @escaping () -> Void,
@@ -34,6 +38,7 @@ public struct ClipboardCard: View {
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.icon = icon
         self.transport = transport
         self.progress = progress
         self.elapsed = elapsed
@@ -82,15 +87,26 @@ public struct ClipboardCard: View {
         .frame(width: Size.clipboardPanelWidth)
     }
 
-    var plate: some View {
-        RoundedRectangle(cornerRadius: Radius.plate, style: .continuous)
-            .fill(Ink.plate)
-            .frame(width: Size.clipboardPlate, height: Size.clipboardPlate)
-            .overlay {
-                ApertureGlyph()
-                    .frame(width: Size.clipboardGlyph, height: Size.clipboardGlyph)
-                    .foregroundStyle(Ink.plateGlyph)
-            }
-            .accessibilityHidden(true)
+    /// An app's icon is drawn as the Finder draws it, its own tile with its own
+    /// margin, at the plate's size: the icon is the plate. The mark gets the plate the
+    /// app icon has built in.
+    @ViewBuilder var plate: some View {
+        if let icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Size.clipboardPlate, height: Size.clipboardPlate)
+                .accessibilityHidden(true)
+        } else {
+            RoundedRectangle(cornerRadius: Radius.plate, style: .continuous)
+                .fill(Ink.plate)
+                .frame(width: Size.clipboardPlate, height: Size.clipboardPlate)
+                .overlay {
+                    ApertureGlyph()
+                        .frame(width: Size.clipboardGlyph, height: Size.clipboardGlyph)
+                        .foregroundStyle(Ink.plateGlyph)
+                }
+                .accessibilityHidden(true)
+        }
     }
 }

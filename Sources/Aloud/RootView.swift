@@ -5,6 +5,8 @@ import Vault
 
 struct RootView: View {
     @Bindable var model: AppModel
+    /// How far down the notice reaches, its margin included; zero with no notice.
+    @State private var noticeInset: CGFloat = .zero
 
     var body: some View {
         NavigationStack(path: $model.path) {
@@ -16,6 +18,7 @@ struct RootView: View {
                     }
                 }
         }
+        .environment(\.noticeInset, noticeInset)
         // The bar floats at the window's foot, with a margin on its sides and its
         // bottom, while something is loaded; with nothing to play there is nothing to
         // control, and the X on the bar is what takes it away. It is the only bottom
@@ -46,7 +49,13 @@ struct RootView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss notice: \(n)")
-                .padding(Space.l)
+                .padding([.horizontal, .top], Space.l)
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    noticeInset = $0
+                }
+                .onDisappear { noticeInset = .zero }
             }
         }
         // A notice can arrive while the reader is elsewhere on screen, so it is spoken
@@ -65,4 +74,15 @@ struct RootView: View {
         .frame(minWidth: Size.minWindow.width, minHeight: Size.minWindow.height)
         .task { model.start() }
     }
+}
+
+extension EnvironmentValues {
+    /// How much of the top of the content the notice floats over, zero with none. The
+    /// notice stays over the content rather than taking a band of its own, and each
+    /// scrolling surface starts its content this far down instead, so nothing sits
+    /// under the notice at rest and everything scrolls beneath it. Laid over the
+    /// content alone, the capsule sat on the reader's first line and on the tops of
+    /// the cards; given a band in the safe area, it moved the reader's scroll view off
+    /// the toolbar, which then drew a hard line under itself on every document.
+    @Entry var noticeInset: CGFloat = .zero
 }

@@ -8,6 +8,9 @@ struct LibraryView: View {
     var folderURL: URL?
     /// Same key as `Defaults.listView`, so Settings and the toolbar toggle agree.
     @AppStorage("listView") private var listView = false
+    /// The selection, this view's own: leaving the folder leaves it behind.
+    @State private var state = LibraryState()
+    @Environment(\.noticeInset) private var noticeInset
 
     var isTopLevel: Bool { folderURL == nil }
     /// Derived live from `model.tree` on every render, so a nested grid never goes stale
@@ -39,6 +42,13 @@ struct LibraryView: View {
     var title: String { results != nil ? "Search" : (isTopLevel ? "Aloud" : (folder?.name ?? "Aloud")) }
     var isGone: Bool { !isTopLevel && folder == nil }
 
+    /// What the grid or list is showing, in its order, for the keys that act on the
+    /// selection: the folders first and then the documents, as they are laid out.
+    var shownFolders: [Folder] { results != nil ? [] : (showsRoots ? model.tree : folders) }
+    var shownDocuments: [Document] { results ?? (showsRoots ? [] : documents) }
+    var order: [String] { shownFolders.map(\.id) + shownDocuments.map(\.id) }
+    var selectedDocuments: [Document] { shownDocuments.filter { state.selection.contains($0.id) } }
+
     /// The hotkey as it is bound now, for the landing's hint. `AloudUI` cannot see
     /// KeyboardShortcuts; the default is the one `Name.pasteAndPlay` ships with, for
     /// the case where the user has cleared the binding.
@@ -48,26 +58,22 @@ struct LibraryView: View {
 
     var body: some View {
         Group {
-            // Nothing attached and nothing in Aloud's own folder: the first landing.
-            // The built-in folder is a root, so it is the documents that say whether
-            // there is anything to show, not the roots.
-            if model.roots.isEmpty, model.documents.isEmpty {
+            // The first scan has not come back yet, and until it does neither landing
+            // can be told from a library: the built-in folder is always a root, so
+            // even with nothing attached there may be notes in it. The landings were
+            // asked first, and a launch with notes and no attached folder opened on
+            // "Point it at a folder of notes" until the scan put the notes back.
+            // A scan that fails still lands, so this cannot outlast the answer.
+            if isTopLevel, !model.scanned {
+                FirstScan()
+            } else if model.roots.isEmpty, model.documents.isEmpty {
+                // Nothing attached and nothing in Aloud's own folder: the first landing.
+                // The built-in folder is a root, so it is the documents that say whether
+                // there is anything to show, not the roots.
                 EmptyState(
                     kind: .noVault, hotkey: Self.hotkeyText, onPrimary: model.pickRootFolder,
                     onSecondary: { model.pasteNote() })
-            } else if isTopLevel, !model.scanned, model.tree.isEmpty, model.notice == nil {
-                // The roots are known and the first scan has not come back yet. An
-                // empty grid here would read as an empty vault, which it is not.
-                // It goes as soon as a scan lands, and it never covers a notice: a
-                // vault whose every root failed has something to say, and a spinner
-                // that outlives the answer is a spinner that never stops.
-                ProgressView("Scanning your folders")
-                    .font(Type.caption)
-                    .foregroundStyle(Ink.soft)
-                    .padding(Space.xxl)
-            } else if isTopLevel, model.scanned, model.documents.isEmpty,
-                results == nil
-            {
+            } else if isTopLevel, model.documents.isEmpty, results == nil {
                 // Folders are chosen and scanned, and not one of them holds a file this
                 // app can read. A grid of empty folders would say the same thing, but
                 // without the two ways out of it.
@@ -81,6 +87,7 @@ struct LibraryView: View {
                     .padding(Space.xxl)
             } else {
                 ScrollView { contents }
+                    .contentMargins(.top, noticeInset, for: .scrollContent)
             }
         }
         // Focusable so a bare Cmd+V reaches the library rather than the system, and on
@@ -96,6 +103,15 @@ struct LibraryView: View {
         .focusable()
         .focusEffectDisabled()
         .onPasteCommand(of: [.plainText]) { _ in model.pasteNote() }
+        // The keys Finder gives a selection. Delete trashes it, Enter opens it - the
+        // one folder, or the first document - Escape lets it go, and Cmd+A takes all.
+        .onDeleteCommand { model.trash(selectedDocuments) }
+        .onExitCommand { state.selection.clear() }
+        .onKeyPress(.return) { openSelection() ? .handled : .ignored }
+        .onCommand(#selector(NSResponder.selectAll(_:))) { state.selection.selectAll(in: order) }
+        // A document that goes while selected, deleted here or elsewhere, leaves the
+        // selection with it, so Delete never reaches for a file that is gone.
+        .onChange(of: order) { _, now in state.selection.prune(to: now) }
         .navigationTitle(title)
         .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "Search")
         .toolbar {
@@ -154,15 +170,50 @@ struct LibraryView: View {
     /// drops `searchResults` back to nil and the folder returns exactly as it was.
     @ViewBuilder var contents: some View {
         if let results {
-            LibraryList(model: model, roots: [], folders: [], documents: results)
+            LibraryList(model: model, state: state, roots: [], folders: [], documents: results)
         } else if listView {
             LibraryList(
-                model: model, roots: showsRoots ? model.tree : [], folders: folders,
+                model: model, state: state, roots: showsRoots ? model.tree : [], folders: folders,
                 documents: documents)
         } else {
             LibraryGrid(
-                model: model, roots: showsRoots ? model.tree : [], folders: folders,
+                model: model, state: state, roots: showsRoots ? model.tree : [], folders: folders,
                 documents: documents)
         }
+    }
+
+    /// Enter: one selected folder is entered, else the first selected document opens.
+    /// False with nothing selected, so the key goes on to whatever else wants it.
+    func openSelection() -> Bool {
+        let folders = shownFolders.filter { state.selection.contains($0.id) }
+        if let doc = selectedDocuments.first {
+            model.open(doc)
+        } else if folders.count == 1, let f = folders.first {
+            model.path.append(.folder(f.url))
+        } else {
+            return false
+        }
+        return true
+    }
+}
+
+/// The wait for the first scan. It draws nothing for the moment a small library takes
+/// to read, so a quick scan does not flash a spinner on its way to the grid, and the
+/// spinner only once the wait is long enough to need saying. An empty grid would read
+/// as an empty vault, which this is not yet known to be.
+private struct FirstScan: View {
+    @State private var slow = false
+
+    var body: some View {
+        ProgressView("Scanning your folders")
+            .font(Type.caption)
+            .foregroundStyle(Ink.soft)
+            .padding(Space.xxl)
+            .opacity(slow ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .task {
+                try? await Task.sleep(for: .seconds(Motion.scanSpinnerDelay))
+                withAnimation(Motion.quick) { slow = true }
+            }
     }
 }

@@ -1,6 +1,7 @@
 import AloudUI
 import Speech
 import SwiftUI
+import Vault
 
 struct TransportBarView: View {
     var model: AppModel
@@ -92,7 +93,8 @@ struct TransportBarView: View {
     /// changed underneath.
     ///
     /// Beside the title is the file's own picture, the card's thumbnail shrunk to the
-    /// row. Under the pointer the picture becomes an X, and pressing it unloads the
+    /// row, or for a note the panel wrote, the icon of the app the text came from.
+    /// Under the pointer the picture becomes an X, and pressing it unloads the
     /// file: the player stops, the slot reads "Nothing loaded", and a reader standing
     /// in the file goes back to the library. The hover is the whole slot, picture and
     /// title, so the X is found by whoever reaches for either; only the picture itself
@@ -104,7 +106,7 @@ struct TransportBarView: View {
                     model.unload()
                 } label: {
                     ZStack {
-                        Thumb(preview: c.preview, scale: .bar)
+                        picture(of: c)
                             .opacity(hoveringTitle ? 0 : 1)
                         Image(systemName: "xmark.circle.fill")
                             .font(Type.control)
@@ -123,6 +125,18 @@ struct TransportBarView: View {
             .animation(Motion.quick, value: hoveringTitle)
         } else {
             Text("Nothing loaded").font(Type.caption).foregroundStyle(Ink.soft)
+        }
+    }
+
+    @ViewBuilder func picture(of doc: Document) -> some View {
+        if let icon = OriginIcon.image(for: doc.origin) {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Size.barIcon, height: Size.barIcon)
+                .accessibilityHidden(true)
+        } else {
+            Thumb(preview: doc.preview, scale: .bar)
         }
     }
 }

@@ -8,8 +8,12 @@ public struct Document: Identifiable, Hashable, Sendable {
     public let modified: Date
     public let bytes: Int
     public let type: DocumentType
+    /// Where the text came from, for a note the panel wrote: read from its front
+    /// matter. Nil for every file that was simply in the folder.
+    public let origin: Origin?
     public init(
-        url: URL, title: String, preview: String, modified: Date, bytes: Int, type: DocumentType
+        url: URL, title: String, preview: String, modified: Date, bytes: Int, type: DocumentType,
+        origin: Origin? = nil
     ) {
         self.url = url
         self.title = title
@@ -17,6 +21,7 @@ public struct Document: Identifiable, Hashable, Sendable {
         self.modified = modified
         self.bytes = bytes
         self.type = type
+        self.origin = origin
     }
 }
 

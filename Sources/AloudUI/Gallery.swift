@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public struct Gallery: View {
@@ -20,8 +21,11 @@ public struct Gallery: View {
                     }
                 }
                 section("Card") {
-                    HStack(spacing: Space.xl) {
+                    HStack(alignment: .top, spacing: Space.xl) {
                         Card(title: "It's been a fast year.", preview: Self.lorem, status: "~8 min")
+                        Card(
+                            title: "It's been a fast year.", preview: Self.lorem, status: "~8 min",
+                            selected: true)
                         Card(
                             title: "Managing Agents, From First Principles", preview: Self.lorem,
                             status: "3:12 left")
@@ -29,6 +33,9 @@ public struct Gallery: View {
                         Card(
                             title: "Kept for later", preview: Self.lorem, status: "~8 min",
                             bookmarked: true)
+                        Card(
+                            title: "From a web page", preview: Self.lorem, status: "~3 min",
+                            icon: Self.safariIcon)
                     }
                 }
                 section("Thumb") {
@@ -38,9 +45,13 @@ public struct Gallery: View {
                     }
                 }
                 section("FolderCard") {
-                    HStack(spacing: Space.xl) {
+                    // Beside a document's card, as the grid lays them out, so the two
+                    // titles can be seen to start on one line.
+                    HStack(alignment: .top, spacing: Space.xl) {
                         FolderCard(name: "untitled folder", count: 0)
                         FolderCard(name: "Essays", count: 12)
+                        FolderCard(name: "Reading notes from the spring term", count: 3)
+                        Card(title: "It's been a fast year.", preview: Self.lorem, status: "~8 min")
                     }
                 }
                 section("IconButton") {
@@ -84,6 +95,8 @@ public struct Gallery: View {
                         ListRow(title: "It's been a fast year.", status: "~8 min", symbol: "doc.fill")
                         ListRow(title: "Finished one", status: "Finished", symbol: "doc.fill")
                         ListRow(
+                            title: "Selected one", status: "~8 min", symbol: "doc.fill", selected: true)
+                        ListRow(
                             title: "Kept for later", status: "~8 min", symbol: "doc.fill",
                             bookmarked: true)
                     }
@@ -110,6 +123,12 @@ public struct Gallery: View {
                 }
                 section("ClipboardCard") {
                     VStack(alignment: .leading, spacing: Space.l) {
+                        ClipboardCard(
+                            title: "It's been a fast year.",
+                            subtitle: "From example.com · 1x · ~3 min · 412 words",
+                            icon: Self.safariIcon, transport: .ready,
+                            progress: 0, elapsed: "0:00", remaining: "~2:35",
+                            onPlay: {}, onBack: {}, onForward: {}, onSeek: { _ in })
                         ClipboardCard(
                             title: "It's been a fast year.",
                             subtitle: "From clipboard · 1x · ~3 min · 412 words", transport: .ready,
@@ -149,6 +168,13 @@ public struct Gallery: View {
             content()
         }
     }
+    /// Safari's icon, for the card that shows where its text came from: on every Mac,
+    /// and nil only where the gallery runs without it, in which case the card keeps
+    /// the mark.
+    static let safariIcon: NSImage? = NSWorkspace.shared.urlForApplication(
+        withBundleIdentifier: "com.apple.Safari"
+    ).map { NSWorkspace.shared.icon(forFile: $0.path) }
+
     static let lorem = String(
         repeating:
             "nobody really teaches you research. you get a desk, a problem someone else picked. ",

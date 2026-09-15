@@ -24,11 +24,19 @@ public struct ClipboardPreview: Equatable, Sendable {
     public let title: String
     public let words: Int
     public let source: Source
+    /// The app the text was found in, and the page when it was one. Nil when the
+    /// hotkey could not tell, in which case `source` alone is what the card says.
+    public let origin: Origin?
+
+    /// The card's second line begins with this, and the note's Now Playing subtitle
+    /// is it: the app by name when it is known, else which way the text came in.
+    public var label: String { origin?.label ?? source.label }
 
     /// Nil when there is nothing there once the whitespace is trimmed, which is what
     /// the hotkey has to know first.
-    public init?(text: String, source: Source = .clipboard) {
+    public init?(text: String, source: Source = .clipboard, origin: Origin? = nil) {
         self.source = source
+        self.origin = origin
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         self.text = trimmed
