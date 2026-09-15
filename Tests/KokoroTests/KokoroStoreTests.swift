@@ -221,6 +221,13 @@ final class SpaceMeter: @unchecked Sendable {
         #expect(!store.isInstalledNow)
     }
 
+    /// The fourth failure sentence, the one no path through this suite reaches on its
+    /// own: an archive that will not unpack.
+    @Test func anArchiveThatWillNotUnpackIsSaidInOneSentence() {
+        #expect(KokoroStore.message(for: ArchiveError.cannotRead("x")) == KokoroStore.unpackMessage)
+        #expect(KokoroStore.message(for: ArchiveError.cannotOpen("x")) == KokoroStore.unpackMessage)
+    }
+
     @Test func downloadFailuresAreSaidInOneSentence() async throws {
         let (store, downloader, _) = try make(release: try makeArchive().release)
         await store.start()

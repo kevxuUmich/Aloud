@@ -195,4 +195,10 @@ public enum Copy {
     public static func kokoroInstalled(version: String, size: String) -> String {
         "Version \(version), \(size)"
     }
+    /// What VoiceOver reads on a voice row's leading button, and on the banner's bar.
+    /// These are strings the section adds like any other, so they live here too.
+    public static func loadingVoice(_ name: String) -> String { "Loading \(name)" }
+    public static func previewVoice(_ name: String) -> String { "Preview \(name)" }
+    public static func downloadVoice(_ name: String) -> String { "Download \(name)" }
+    public static let downloading = "Downloading"
 }

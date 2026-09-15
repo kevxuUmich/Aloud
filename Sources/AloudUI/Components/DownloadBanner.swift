@@ -47,7 +47,7 @@ public struct DownloadBanner: View {
                     HStack(spacing: Space.s) {
                         ProgressView(value: fraction)
                             .progressViewStyle(.linear)
-                            .accessibilityLabel("Downloading")
+                            .accessibilityLabel(Copy.downloading)
                         Button(Copy.cancel, action: onCancel).buttonStyle(.link)
                     }
                 case .busy(let word):

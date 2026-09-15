@@ -14,10 +14,15 @@ public struct KokoroReleaseInfo: Sendable, Equatable {
         self.bytes = bytes
     }
     /// The size as the picker's badge shows it, in whole megabytes.
-    public var sizeLabel: String { "\(bytes / 1_000_000) MB" }
+    public var sizeLabel: String { KokoroRelease.megabytes(bytes) }
 }
 
 public enum KokoroRelease {
+    /// Whole megabytes, as the picker's badge and the Settings row both say it. One
+    /// place, so the two can never round differently, and the only place the divisor
+    /// lives: `Sources/Aloud` carries no number literal of its own.
+    public static func megabytes(_ bytes: Int64) -> String { "\(bytes / 1_000_000) MB" }
+
     public static let current = KokoroReleaseInfo(
         url: URL(string: "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-2.aar")!,
         version: "2",

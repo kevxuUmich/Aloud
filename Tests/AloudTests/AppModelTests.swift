@@ -13,14 +13,13 @@ import Vault
 ///
 /// Each case gets its own vault directory, its own progress file and its own
 /// `UserDefaults` suite for the root store, so no case can see the reader's real vault
-/// or another case's writes. `Defaults.store` is left alone on purpose: it is a
-/// process-global, and swapping it here would swap it for every suite running beside
-/// this one. `pickVoice`, `setRate` and `setVolume` do write a setting, so those three
-/// land in the process-wide store, which under `swift test` is the test binary's own
-/// domain and not the reader's Aloud. That is safe now that `DefaultsTests` binds a
-/// task local rather than swapping the global: the two suites run in parallel, and the
-/// swap used to mean these writes could land in that suite's throwaway store, or its
-/// own writes in this one's.
+/// or another case's writes. `Defaults.store` is a constant and cannot be swapped: a
+/// case that needs settings of its own binds `Defaults.overrideStore`, a task local, so
+/// it is that case's alone however many suites run beside it. `withKokoroModel` binds
+/// one, because the launch restore reads back the `voiceID` that `pickVoice` wrote. The
+/// cases that go through `withModel` do not, so their `pickVoice`, `setRate` and
+/// `setVolume` land in the process-wide store, which under `swift test` is the test
+/// binary's own domain and not the reader's Aloud.
 @Suite @MainActor struct AppModelTests {
     /// A model that touches nothing of the reader's: no vault roots, since the root
     /// store is pointed at a throwaway suite, and no real progress file.
@@ -65,12 +64,30 @@ import Vault
     /// an idle machine, and a second was close enough to a busy one's scheduling that a
     /// 50 ms hold once outlived it and the assertion after the poll failed on timing
     /// rather than on behaviour.
-    func poll(until condition: () -> Bool) async throws {
+    func poll(
+        until condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
+        // Said here rather than left to the assertion after the call: a condition that
+        // never came true is a timeout, and reading it off the expectation below made
+        // the original flake look like a behaviour failure.
+        Issue.record("the poll timed out", sourceLocation: sourceLocation)
+    }
+
+    /// The same, for a condition read off an actor.
+    func poll(
+        until condition: () async -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("the poll timed out", sourceLocation: sourceLocation)
     }
 
     /// Overlapping saves are queued through `enqueueSave` rather than `async let`
@@ -851,7 +868,7 @@ import Vault
             model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
             await kokoro.warmTask?.value
             model.player.play()
-            try await poll { apple.spoken.isEmpty == false || kokoro.speakTask != nil }
+            try await poll { await engine.calls.count == 1 }
             #expect(apple.spoken.isEmpty)
             model.pickVoice(try #require(model.provider.voices.first { $0.id == "fake" }))
             #expect(apple.spoken.map(\.text) == ["One two three."])
@@ -871,7 +888,7 @@ import Vault
             model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
             await kokoro.warmTask?.value
             model.player.play()
-            try await poll { apple.spoken.isEmpty == false || kokoro.speakTask != nil }
+            try await poll { await engine.calls.count == 1 }
             #expect(apple.spoken.isEmpty)
             model.removeKokoro()
             #expect(model.player.voice?.id == "fake")

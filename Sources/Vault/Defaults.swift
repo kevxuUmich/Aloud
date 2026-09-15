@@ -2,10 +2,6 @@ import Foundation
 
 /// The app's settings, one typed accessor per key, so the app and Settings agree on names.
 public enum Defaults {
-    /// The one `nonisolated(unsafe)` in the app: the store the app itself reads and
-    /// writes, settable so a host that keeps its settings elsewhere can point it there
-    /// before anything reads. The tests leave it alone and use `overrideStore`.
-    nonisolated(unsafe) public static var store = UserDefaults.standard
     /// A `UserDefaults` that can cross into a task local. The class is thread safe and
     /// documented as such, and is only missing the annotation, so this asserts what the
     /// framework already promises rather than papering over a race.
@@ -13,6 +9,11 @@ public enum Defaults {
         public let defaults: UserDefaults
         public init(_ defaults: UserDefaults) { self.defaults = defaults }
     }
+
+    /// The store the app itself reads and writes. Nothing assigns it: a test binds
+    /// `overrideStore` for the duration of its own task tree instead, which is why this
+    /// is a `let` and why the app has no `nonisolated(unsafe)` global left.
+    public static let store = Store(UserDefaults.standard)
 
     /// A store for the duration of one task tree, which is how the tests get a
     /// throwaway suite without swapping the process-global out from under whatever
@@ -22,7 +23,7 @@ public enum Defaults {
     @TaskLocal public static var overrideStore: Store?
     /// The store every accessor below reads and writes: the task's own if it has one,
     /// the app's otherwise.
-    public static var current: UserDefaults { overrideStore?.defaults ?? store }
+    public static var current: UserDefaults { (overrideStore ?? store).defaults }
     public static var noteFolderPath: String? {
         get { current.string(forKey: "noteFolderPath") }
         set { current.set(newValue, forKey: "noteFolderPath") }

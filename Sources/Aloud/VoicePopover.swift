@@ -96,7 +96,10 @@ struct VoicePopover: View {
     /// search shows the section only when a Kokoro voice matches.
     @ViewBuilder private var kokoroSection: some View {
         if let kokoro = model.kokoro, let store = model.kokoroStore {
-            let installed = store.isInstalledNow
+            // Read off the observable state rather than the lock-guarded flag beside
+            // it: the flag is not observable, and the rows would redraw on the install
+            // only because a sibling line in this same body happens to read `state`.
+            let installed = Self.isInstalled(store.state)
             let matching = kokoroMatches
             if !matching.isEmpty {
                 Section {
@@ -141,10 +144,20 @@ struct VoicePopover: View {
         }
     }
 
+    /// Every case is named rather than left to a `default`, so a sixth state has to be
+    /// decided here rather than quietly counting as not busy.
     static func isBusy(_ state: KokoroStoreState) -> Bool {
         switch state {
         case .downloading, .installing: true
-        default: false
+        case .absent, .installed, .failed: false
+        }
+    }
+
+    /// The same, for the rows: installed is the state, not a flag read beside it.
+    static func isInstalled(_ state: KokoroStoreState) -> Bool {
+        switch state {
+        case .installed: true
+        case .absent, .downloading, .installing, .failed: false
         }
     }
 

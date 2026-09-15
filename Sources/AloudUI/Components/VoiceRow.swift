@@ -45,13 +45,13 @@ public struct VoiceRow: View {
                 ProgressView()
                     .controlSize(.small)
                     .frame(width: Size.icon, height: Size.icon)
-                    .accessibilityLabel("Loading \(name)")
+                    .accessibilityLabel(Copy.loadingVoice(name))
             } else {
                 Button(action: isInstalled ? onPreview : onPick) {
                     Image(systemName: isInstalled ? "play.circle" : "arrow.down.circle")
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(isInstalled ? "Preview \(name)" : "Download \(name)")
+                .accessibilityLabel(isInstalled ? Copy.previewVoice(name) : Copy.downloadVoice(name))
             }
             Button(action: onPick) {
                 HStack(spacing: Space.m) {

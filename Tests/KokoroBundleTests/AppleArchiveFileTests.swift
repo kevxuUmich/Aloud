@@ -10,14 +10,23 @@ import Testing
         return url
     }
 
-    /// A tree with a nested package, a voice and a manifest, as a bundle has.
+    /// A tree with a nested package, a voice and a manifest, as a bundle has, and a
+    /// second package that is a hard link to the first's weight, as the four acoustic
+    /// buckets are. The link is here rather than in its own fixture so the determinism
+    /// test covers cluster-id assignment, which is the one thing deduplication could
+    /// make depend on the order the tree was laid down in.
     func makeTree(in root: URL, stamp: Date) throws {
         let fm = FileManager.default
         try fm.createDirectory(
             at: root.appendingPathComponent("coreml/p.mlpackage/Data"), withIntermediateDirectories: true)
+        try fm.createDirectory(
+            at: root.appendingPathComponent("coreml/q.mlpackage/Data"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("voices"), withIntermediateDirectories: true)
         try Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0 % 251) })
             .write(to: root.appendingPathComponent("coreml/p.mlpackage/Data/weight.bin"))
+        try fm.linkItem(
+            at: root.appendingPathComponent("coreml/p.mlpackage/Data/weight.bin"),
+            to: root.appendingPathComponent("coreml/q.mlpackage/Data/weight.bin"))
         try Data(count: 1024).write(to: root.appendingPathComponent("voices/af_bella.bin"))
         try Data("{}\n".utf8).write(to: root.appendingPathComponent("KokoroRuntimeManifest.json"))
         try BundleBuilder.normalisePermissions(under: root)
@@ -37,7 +46,8 @@ import Testing
         try AppleArchiveFile.extract(archive: archive, into: dst)
 
         for path in [
-            "coreml/p.mlpackage/Data/weight.bin", "voices/af_bella.bin", "KokoroRuntimeManifest.json",
+            "coreml/p.mlpackage/Data/weight.bin", "coreml/q.mlpackage/Data/weight.bin",
+            "voices/af_bella.bin", "KokoroRuntimeManifest.json",
         ] {
             #expect(
                 try Data(contentsOf: dst.appendingPathComponent(path))

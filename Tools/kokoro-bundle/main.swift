@@ -3,15 +3,15 @@ import KokoroBundle
 
 // Builds the Kokoro model bundle Aloud downloads on first use.
 //
-//     swift run -c release kokoro-bundle [--version 1] [--inputs .build/kokoro-inputs] [--out .build/kokoro-bundle]
+//     swift run -c release kokoro-bundle --version 2 [--inputs .build/kokoro-inputs] [--out .build/kokoro-bundle]
 //
 // The inputs are fetched against pinned checksums the first time and reused after. The
 // output is `kokoro-<version>.aar` and a sidecar with its SHA-256, both under `--out`.
 
 let usage = """
-    Usage: kokoro-bundle [--version <version>] [--inputs <path>] [--out <path>] [--help]
+    Usage: kokoro-bundle --version <version> [--inputs <path>] [--out <path>] [--help]
 
-      --version   Bundle version, used in the output file names (default: 1)
+      --version   Bundle version, used in the output file names (required)
       --inputs    Folder the pinned inputs are fetched into (default: .build/kokoro-inputs)
       --out       Folder the archive and its sidecar are written into (default: .build/kokoro-bundle)
       --help      Print this message and exit
@@ -41,7 +41,12 @@ while index < arguments.count {
     index += 2
 }
 
-let version = values["--version"] ?? "1"
+// No default. The pinned inputs are whatever this commit lists, so a bare run used to
+// write a four-bucket archive under the one-bucket release's name.
+guard let version = values["--version"] else {
+    FileHandle.standardError.write(Data("--version is required\n\n\(usage)\n".utf8))
+    exit(2)
+}
 let inputs = URL(fileURLWithPath: values["--inputs"] ?? ".build/kokoro-inputs")
 let out = URL(fileURLWithPath: values["--out"] ?? ".build/kokoro-bundle")
 let name = "kokoro-\(version)"
@@ -85,26 +90,45 @@ guard manifest.modelPackages.allSatisfy({ $0.treeSHA256 == pins[$0.path] }) else
 try AppleArchiveFile.compress(directory: root, to: archive)
 
 // Prove the archive is not truncated or corrupt before it is ever trusted: extract it
-// back out into a scratch folder and check the manifest bytes match what was laid out.
+// back out into a scratch folder and check what came back against what was laid out.
+//
+// The manifest alone is not enough. It is a unique file and always carries its own data,
+// while the one thing hard-link deduplication could get wrong is a cluster follower
+// coming back with no data at all, which is every weight file but one. So every package
+// is re-digested out of the extracted tree and compared with the digest just taken from
+// the built layout, which covers every file rather than one.
 let verify = out.appendingPathComponent("\(name)-verify-\(UUID().uuidString)")
 func cleanUpVerify() { try? FileManager.default.removeItem(at: verify) }
 do {
     try AppleArchiveFile.extract(archive: archive, into: verify)
     let extracted = try Data(contentsOf: verify.appendingPathComponent(RuntimeManifest.fileName))
     let built = try Data(contentsOf: root.appendingPathComponent(RuntimeManifest.fileName))
-    cleanUpVerify()
     guard extracted == built else {
+        cleanUpVerify()
         try? FileManager.default.removeItem(at: archive)
         print("extracted manifest does not match the built layout; not publishing \(archive.path)")
         exit(1)
     }
+    for package in manifest.modelPackages {
+        let back = try Digest.package(
+            at: verify.appendingPathComponent(package.path), path: package.path)
+        guard back.treeSHA256 == package.treeSHA256, back.fileCount == package.fileCount,
+            back.bytes == package.bytes
+        else {
+            cleanUpVerify()
+            try? FileManager.default.removeItem(at: archive)
+            print("\(package.path) came back from the archive different; not publishing \(archive.path)")
+            exit(1)
+        }
+    }
+    cleanUpVerify()
 } catch {
     cleanUpVerify()
     try? FileManager.default.removeItem(at: archive)
     print("could not verify the archive by extraction: \(error)")
     exit(1)
 }
-print("archive verified by extraction")
+print("archive verified by extraction: \(manifest.modelPackages.count) package digests re-checked")
 
 let sha256 = try Digest.sha256(ofFileAt: archive)
 let bytes = try archive.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0

@@ -4,7 +4,7 @@ import Testing
 @testable import Kokoro
 
 /// Runs only when `ALOUD_KOKORO_BUNDLE` names a folder holding the real bundle (the
-/// manifest at its root), for example `.build/kokoro-bundle/kokoro-1` after
+/// manifest at its root), for example `.build/kokoro-bundle/kokoro-2` after
 /// `make kokoro-bundle`. It loads the real engine and speaks one sentence.
 @Suite struct KokoroIntegrationTests {
     static var bundle: URL? {
@@ -89,13 +89,21 @@ import Testing
                 print("kokoro pass \(pass) chars=\(text.count) audio=\(seconds)s wall=\(wall)")
                 #expect(finite, "\(text.count)")
                 #expect(audible, "\(text.count)")
+                // A real-time factor under one, which is the least a render-ahead of one
+                // sentence needs to keep up. An absolute bound would be brittle; this
+                // one has about a tenfold margin on the numbers above and still catches
+                // a return to the one-bucket, iPhone-policy behaviour, which was three.
+                // Only the last pass: the first two overlap the buckets still warming.
+                if pass == 3 { #expect(wall < .seconds(seconds), "\(text.count)") }
             }
         }
         // The short sentence once more, long after the last bucket has warmed, so its
         // steady state is not read off a call that overlapped one.
         let settled = ContinuousClock.now
-        _ = try await engine.synthesize(Self.shortSentence, voice: "af_bella", speed: 1)
-        print("kokoro settled chars=35 wall=\(ContinuousClock.now - settled)")
+        let last = try await engine.synthesize(Self.shortSentence, voice: "af_bella", speed: 1)
+        let settledWall = ContinuousClock.now - settled
+        print("kokoro settled chars=35 wall=\(settledWall)")
+        #expect(settledWall < .seconds(Double(last.count) / KokoroPlayback.sampleRate))
     }
 
     static let shortSentence = "Nobody really teaches you research."

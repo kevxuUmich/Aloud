@@ -122,6 +122,9 @@ struct SettingsView: View {
                         HStack(spacing: Space.m) {
                             Text(Self.kokoroStatus(store.state))
                                 .foregroundStyle(Ink.soft)
+                                // The failure sentences are a line of prose, and this
+                                // row is an HStack: without this they truncate.
+                                .fixedSize(horizontal: false, vertical: true)
                             switch store.state {
                             case .installed:
                                 Button(Copy.remove) { model.removeKokoro() }
@@ -198,7 +201,7 @@ struct SettingsView: View {
         case .downloading(let f): f.formatted(.percent.precision(.fractionLength(0)))
         case .installing: Copy.kokoroInstalling
         case .installed(let version, let bytes):
-            Copy.kokoroInstalled(version: version, size: "\(bytes / 1_000_000) MB")
+            Copy.kokoroInstalled(version: version, size: KokoroRelease.megabytes(bytes))
         case .failed(let message): message
         }
     }
