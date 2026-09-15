@@ -98,8 +98,9 @@ actor FakeEngine: KokoroSynthesizing {
             support: root.appendingPathComponent("s"), caches: root.appendingPathComponent("c"))
         if installed {
             try FileManager.default.createDirectory(
-                at: paths.modelDirectory(version: "1"), withIntermediateDirectories: true)
-            try Data().write(to: paths.marker(version: "1"))
+                at: paths.modelDirectory(version: KokoroRelease.current.version),
+                withIntermediateDirectories: true)
+            try Data().write(to: paths.marker(version: KokoroRelease.current.version))
         }
         let store = KokoroStore(paths: paths, release: KokoroRelease.current, downloader: FakeDownloader())
         let engine = FakeEngine()

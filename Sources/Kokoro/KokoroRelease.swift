@@ -19,8 +19,8 @@ public struct KokoroReleaseInfo: Sendable, Equatable {
 
 public enum KokoroRelease {
     public static let current = KokoroReleaseInfo(
-        url: URL(string: "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar")!,
-        version: "1",
-        sha256: "c70f436d665855f507f2fe828097b24baf30a508ba2ea5cb45f6da0dac7d6ca5",
-        bytes: 159_237_319)
+        url: URL(string: "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-2.aar")!,
+        version: "2",
+        sha256: "4744918f3af59e4ed031b763c698e91d6eb424fd5027982e85ca1cc6a527b15e",
+        bytes: 159_343_644)
 }

@@ -689,8 +689,9 @@ import Vault
     /// the model without the 159 MB.
     func install(_ store: KokoroStore) throws {
         try FileManager.default.createDirectory(
-            at: store.paths.modelDirectory(version: "1"), withIntermediateDirectories: true)
-        try Data().write(to: store.paths.marker(version: "1"))
+            at: store.paths.modelDirectory(version: KokoroRelease.current.version),
+            withIntermediateDirectories: true)
+        try Data().write(to: store.paths.marker(version: KokoroRelease.current.version))
     }
 
     /// Picking a Kokoro voice loads the models; picking an Apple voice again gives the

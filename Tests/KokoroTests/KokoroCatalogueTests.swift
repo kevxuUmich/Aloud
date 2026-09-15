@@ -42,8 +42,8 @@ import Testing
         let r = KokoroRelease.current
         #expect(
             r.url.absoluteString
-                == "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar")
-        #expect(r.version == "1")
+                == "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-2.aar")
+        #expect(r.version == "2")
         #expect(r.sha256.count == 64 && r.sha256 == r.sha256.lowercased())
         #expect(r.bytes > 100_000_000)
         #expect(r.sizeLabel.hasSuffix(" MB"))
