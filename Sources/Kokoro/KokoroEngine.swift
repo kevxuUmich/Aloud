@@ -33,14 +33,39 @@ public actor KokoroEngine: KokoroSynthesizing {
 
     public var isLoaded: Bool { tts != nil }
 
-    /// The SDK's own benchmark policy, not its `gistDefault`. `gistDefault` pins the
-    /// duration model to the CPU to dodge an iOS MPSGraph stall, and on this bundle's
-    /// padded 128-token duration graph that costs 5 to 8 seconds a sentence; see
-    /// `perf-investigation.md` in the plan folder. Part B of the fix wave settles the
-    /// final policy from a wider sweep.
-    static let computePolicy = KokoroComputePolicy(
-        duration: .cpuAndGPU, f0ntrain: .cpuAndGPU, decoderPre: .cpuAndNeuralEngine,
-        generator: .cpuAndGPU)
+    /// The compute units each stage is asked for, chosen by measurement rather than by
+    /// reading. It is the SDK's own `gistDefault`, passed explicitly so the choice is
+    /// this app's and the table below says why.
+    ///
+    /// Swept on 2026-09-15, Apple M2 Pro 16 GB, macOS 26.2, release build, against the
+    /// four-bucket bundle, with the compiled-model cache and Core ML's own
+    /// specialisation caches warm: each policy was run twice in a row and the second run
+    /// read, because switching policy evicts the specialisation and the run after a
+    /// switch pays it again. Seconds of wall clock for one `synthesize`; "settled" is
+    /// the short sentence once every bucket behind the first has finished prewarming,
+    /// which is the number a reader mid-chapter lives with.
+    ///
+    ///     policy                                  load+warm   2.75s   7.88s  13.14s  settled
+    ///     gistDefault (duration .cpuOnly)            1.5-2.4    0.86    0.35    0.70    0.157
+    ///     duration .cpuAndGPU, decoderPre ANE        5.4-6.4    1.03    0.43    0.93    0.235
+    ///     every stage .cpuAndGPU                     5.5-6.1    1.04    0.44    0.96    0.242
+    ///     every stage .all                              20.4    1.34    0.50    0.98    0.251
+    ///     generator .cpuAndNeuralEngine, rest .all       280    12.2     5.9    10.0     1.63
+    ///
+    /// So the SDK's default wins on this bundle, on every sentence and on the wait before
+    /// the first one. `perf-investigation.md` in the plan folder concluded the opposite
+    /// from the same machine, measuring the duration model at 5 to 8 seconds on the CPU;
+    /// that does not reproduce here. The control says why: the one-bucket bundle under
+    /// this same policy settles at 0.498 s now, against the 8 to 9 s Task 11 recorded
+    /// with it. The old number was Core ML compiling and specialising the graphs, which
+    /// costs 40 to 45 seconds once per machine per policy and is cached afterwards, not
+    /// the placement of the duration stage. The four buckets are still worth 3.2x on a
+    /// short sentence (0.498 s to 0.157 s).
+    ///
+    /// The two Neural Engine policies are the ones to stay away from, and both were
+    /// already documented by the SDK: the generator is GPU-preferred, and asking for it
+    /// on the ANE cost 280 s of prewarm and left every sentence 5 to 10 times slower.
+    static let computePolicy = KokoroComputePolicy.gistDefault
 
     /// One sentence per acoustic bucket, in the order a reader meets them.
     ///
