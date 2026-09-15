@@ -240,7 +240,7 @@ final class AppModel {
         player.voice = v
         Defaults.voiceID = v.id
         if KokoroCatalogue.isKokoro(v.id) {
-            kokoro?.warm()
+            kokoro?.warm(v)
         } else {
             kokoro?.unload()
             respeakCurrentSentence()
@@ -349,7 +349,7 @@ final class AppModel {
         }
         // The saved voice was a Kokoro one and the model is here: load it now, so
         // Play does not wait.
-        if let v = player.voice, KokoroCatalogue.isKokoro(v.id) { kokoro?.warm() }
+        if let v = player.voice, KokoroCatalogue.isKokoro(v.id) { kokoro?.warm(v) }
     }
 
     deinit {

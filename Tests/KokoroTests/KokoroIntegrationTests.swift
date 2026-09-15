@@ -20,7 +20,7 @@ import Testing
         let cache = FileManager.default.temporaryDirectory.appendingPathComponent(
             "kokoro-cache-\(UUID().uuidString)")
         let engine = KokoroEngine()
-        try await engine.load(root: root, cache: cache)
+        try await engine.load(root: root, cache: cache, voice: "af_bella")
         for voice in ["af_bella", "bm_fable"] {
             let samples = try await engine.synthesize(
                 "Nobody really teaches you research.", voice: voice, speed: 1)
@@ -84,7 +84,7 @@ import Testing
             "aloud-kokoro-measure-cache")
         let engine = KokoroEngine()
         let loading = ContinuousClock.now
-        try await engine.load(root: root, cache: cache)
+        try await engine.load(root: root, cache: cache, voice: "af_bella")
         print("kokoro load and first prewarm: \(ContinuousClock.now - loading)")
         // The first of each pair arrives while the buckets the first sentence does not
         // need are still warming, which is the wait that design costs a reader.
@@ -144,7 +144,7 @@ import Testing
         let cache = FileManager.default.temporaryDirectory.appendingPathComponent(
             "kokoro-cache-\(UUID().uuidString)")
         let engine = KokoroEngine()
-        try await engine.load(root: root, cache: cache)
+        try await engine.load(root: root, cache: cache, voice: "af_bella")
         var seconds: [Double] = []
         for speed in [1.0, 2.0, 3.0] {
             let samples = try await engine.synthesize(

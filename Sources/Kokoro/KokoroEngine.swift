@@ -17,7 +17,10 @@ public enum KokoroEngineError: Error, Sendable, Equatable {
 
 /// The engine as the provider sees it, so a fake can stand in for it.
 public protocol KokoroSynthesizing: Actor {
-    func load(root: URL, cache: URL) async throws
+    /// `voice` is the voice the prewarm should use: the one the reader picked, because a
+    /// voice this process has not spoken in costs about a third of a second on its first
+    /// sentence, and the prewarm is where that belongs.
+    func load(root: URL, cache: URL, voice: String) async throws
     func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float]
     func unload()
 }
@@ -38,6 +41,11 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// the model this actor holds; a test hands in its own, because the order, the
     /// cancellation and the handle are worth asserting without CoreML in the room.
     private let prewarmOverride: (@Sendable (String, Float) async -> Void)?
+    /// The voice every bucket is warmed in, which is the one the reader picked. A voice
+    /// this process has never spoken in costs about 0.35 s extra on its first sentence,
+    /// measured, and warming in the wrong voice pays that on the sentence rather than
+    /// inside the wait the reader already accepted.
+    private var prewarmVoice = KokoroVoiceID(KokoroEngine.defaultPrewarmVoice)
     private let log = Logger(subsystem: "design.kevxu.aloud", category: "kokoro")
 
     public init() { prewarmOverride = nil }
@@ -48,38 +56,52 @@ public actor KokoroEngine: KokoroSynthesizing {
     public var isLoaded: Bool { tts != nil }
 
     /// The compute units each stage is asked for, chosen by measurement rather than by
-    /// reading. It is the SDK's own `gistDefault`, passed explicitly so the choice is
-    /// this app's and the table below says why.
+    /// reading. It is the policy the SDK's own benchmark harness uses, not its
+    /// `gistDefault`, and it is passed explicitly so the choice is this app's.
     ///
     /// Swept on 2026-09-15, Apple M2 Pro 16 GB, macOS 26.2, release build, against the
-    /// four-bucket bundle, with the compiled-model cache and Core ML's own
-    /// specialisation caches warm: each policy was run twice in a row and the second run
-    /// read, because switching policy evicts the specialisation and the run after a
-    /// switch pays it again. Seconds of wall clock for one `synthesize`; "settled" is
-    /// the short sentence once every bucket behind the first has finished prewarming,
-    /// which is the number a reader mid-chapter lives with.
+    /// four-bucket bundle. Two things had to be held still to get a comparable reading.
+    /// The compiled-model cache must be warm, and Core ML's own specialisation cache is
+    /// evicted by switching policy, so each policy was given a throwaway run first and
+    /// then three fresh processes. Seconds of wall clock, one sentence per acoustic
+    /// bucket, "first" being the first `synthesize` after `load` returns and "third"
+    /// the third call for the same sentence:
     ///
-    ///     policy                                  load+warm   2.75s   7.88s  13.14s  settled
-    ///     gistDefault (duration .cpuOnly)            1.5-2.4    0.86    0.35    0.70    0.157
-    ///     duration .cpuAndGPU, decoderPre ANE        5.4-6.4    1.03    0.43    0.93    0.235
-    ///     every stage .cpuAndGPU                     5.5-6.1    1.04    0.44    0.96    0.242
-    ///     every stage .all                              20.4    1.34    0.50    0.98    0.251
-    ///     generator .cpuAndNeuralEngine, rest .all       280    12.2     5.9    10.0     1.63
+    ///     policy         load   7s first   3s first   7s third   3s third
+    ///     staged         5.42   0.79       0.98       0.35       0.23
+    ///                    5.43   0.82       1.06       0.35       0.23
+    ///                    5.44   0.79       1.01       0.35       0.23
+    ///     gistDefault    1.63   1.72       1.41       0.28       0.46
+    ///                    1.66   3.28       1.40       0.31       0.21
+    ///                    3.34   4.09       1.35       0.33       0.20
     ///
-    /// So the SDK's default wins on this bundle, on every sentence and on the wait before
-    /// the first one. `perf-investigation.md` in the plan folder concluded the opposite
-    /// from the same machine, measuring the duration model at 5 to 8 seconds on the CPU;
-    /// that does not reproduce here. The control says why: the one-bucket bundle under
-    /// this same policy settles at 0.498 s now, against the 8 to 9 s Task 11 recorded
-    /// with it. The old number was Core ML compiling and specialising the graphs, which
-    /// costs 40 to 45 seconds once per machine per policy and is cached afterwards, not
-    /// the placement of the duration stage. The four buckets are still worth 3.2x on a
-    /// short sentence (0.498 s to 0.157 s).
+    /// `gistDefault` is the cheaper load and, by about 0.05 s, the cheaper settled
+    /// sentence. It loses the one that matters: the first sentence after a load costs it
+    /// 1.4 to 4.1 seconds against this policy's 0.8 to 1.1, and it is erratic where this
+    /// one repeats to within 30 ms. The spec's number is about the first sentence, so
+    /// this is the policy.
     ///
-    /// The two Neural Engine policies are the ones to stay away from, and both were
-    /// already documented by the SDK: the generator is GPU-preferred, and asking for it
-    /// on the ANE cost 280 s of prewarm and left every sentence 5 to 10 times slower.
-    static let computePolicy = KokoroComputePolicy.gistDefault
+    /// The difference is where each pays for its duration graph. `gistDefault` pins the
+    /// duration model to the CPU, and that graph is about 32,000 primitive ops, built
+    /// per process on first use; this policy puts it on the GPU, where MPSGraph
+    /// specialises it once per machine, caches it on disk, and hands every later process
+    /// a graph that is ready. So `gistDefault` moves the cost off `load` and onto the
+    /// reader's first sentence, which is exactly the wrong way round.
+    ///
+    /// That also settles `perf-investigation.md`, which measured the duration stage at
+    /// 5.0 to 8.1 s on `.cpuOnly` and read it as steady state. The cost is real and it is
+    /// the per-process CPU graph build, but through `KokoroTTS` it amortises: the third
+    /// call is 0.20 to 0.46 s. The investigation drove `executeKokoroSynthesis` with
+    /// models it instantiated itself rather than through the facade the app uses, which
+    /// is the likeliest reason its calls never reached a settled state.
+    ///
+    /// Two policies to stay away from, both of which the SDK already documents. Asking
+    /// for the generator on the Neural Engine cost 280 s of prewarm and left every
+    /// sentence 5 to 10 times slower; `.all` for every stage lets Core ML find the same
+    /// trap by itself, at 20 s of prewarm and one call in 48 s.
+    static let computePolicy = KokoroComputePolicy(
+        duration: .cpuAndGPU, f0ntrain: .cpuAndGPU, decoderPre: .cpuAndNeuralEngine,
+        generator: .cpuAndGPU)
 
     /// The most speed the model is worth asking for.
     ///
@@ -118,7 +140,8 @@ public actor KokoroEngine: KokoroSynthesizing {
             0.6
         ),
     ]
-    static let prewarmVoice = KokoroVoiceID("af_bella")
+    /// The voice a warm falls back to when the caller names none.
+    static let defaultPrewarmVoice = "af_bella"
 
     /// Loads the SDK and warms the bucket the first sentence is likeliest to land in,
     /// then returns: the reader is not made to wait for buckets that sentence does not
@@ -127,17 +150,18 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// isolation, which `await tts.prewarm` gives up: `KokoroTTS` is itself an actor and
     /// runs a whole prediction without suspending, so the two serialise there. That
     /// property lives in the SDK and could change there.
-    public func load(root: URL, cache: URL) async throws {
+    public func load(root: URL, cache: URL, voice: String) async throws {
         guard tts == nil else { return }
         loadEpoch += 1
         let epoch = loadEpoch
+        prewarmVoice = KokoroVoiceID(voice)
         do {
             let loaded = try await KokoroTTS.load(
                 resources: .directory(root, compiledModelsDirectory: cache),
                 computePolicy: Self.computePolicy)
             let first = Self.prewarms[0]
             try await loaded.prewarm(
-                text: first.text, voice: Self.prewarmVoice,
+                text: first.text, voice: prewarmVoice,
                 options: KokoroSynthesisOptions(speed: first.speed))
             // An unload arrived while the SDK was loading. It could not be cancelled, but
             // keeping what it produced would hold the memory the unload asked back.
@@ -182,7 +206,7 @@ public actor KokoroEngine: KokoroSynthesizing {
         guard let tts else { return }
         do {
             try await tts.prewarm(
-                text: text, voice: Self.prewarmVoice, options: KokoroSynthesisOptions(speed: speed))
+                text: text, voice: prewarmVoice, options: KokoroSynthesisOptions(speed: speed))
         } catch is CancellationError {
         } catch KokoroError.synthesisCancelled {
         } catch {

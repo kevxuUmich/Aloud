@@ -56,6 +56,8 @@ actor FakeEngine: KokoroSynthesizing {
     struct Call: Equatable { let text: String; let voice: String; let speed: Double }
     var calls: [Call] = []
     var loads: [URL] = []
+    /// The voice each load was told to warm in.
+    var loadVoices: [String] = []
     var unloads = 0
     var failLoad: String?
     var failSynthesis: KokoroEngineError?
@@ -64,8 +66,9 @@ actor FakeEngine: KokoroSynthesizing {
     var loadGate: CheckedContinuation<Void, Never>?
     var holdLoadNext = false
 
-    func load(root: URL, cache: URL) async throws {
+    func load(root: URL, cache: URL, voice: String) async throws {
         loads.append(root)
+        loadVoices.append(voice)
         if holdLoadNext {
             holdLoadNext = false
             await withCheckedContinuation { loadGate = $0 }

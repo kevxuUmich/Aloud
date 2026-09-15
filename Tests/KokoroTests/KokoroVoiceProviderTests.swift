@@ -9,6 +9,8 @@ actor FakeEngine: KokoroSynthesizing {
     struct Call: Equatable { let text: String; let voice: String; let speed: Double }
     var calls: [Call] = []
     var loads: [URL] = []
+    /// The voice each load was told to warm in.
+    var loadVoices: [String] = []
     var unloads = 0
     var failLoad: String?
     var failSynthesis: KokoroEngineError?
@@ -17,8 +19,9 @@ actor FakeEngine: KokoroSynthesizing {
     var loadGate: CheckedContinuation<Void, Never>?
     var holdLoadNext = false
 
-    func load(root: URL, cache: URL) async throws {
+    func load(root: URL, cache: URL, voice: String) async throws {
         loads.append(root)
+        loadVoices.append(voice)
         if holdLoadNext {
             holdLoadNext = false
             await withCheckedContinuation { loadGate = $0 }
@@ -481,6 +484,30 @@ actor FakeEngine: KokoroSynthesizing {
         let speeds = await engine.calls.map(\.speed)
         #expect(speeds.allSatisfy { $0 <= KokoroEngine.maxSpeed }, "\(speeds)")
         #expect(speeds == Rate.allCases.map { min($0.factor, KokoroEngine.maxSpeed) }, "\(speeds)")
+    }
+
+    /// The buckets are warmed in the voice the reader picked. A voice this process has
+    /// never spoken in costs about a third of a second on its first sentence, measured on
+    /// the real engine, and that belongs inside the wait the reader already accepted when
+    /// they picked the voice, not on the sentence they pressed Play for.
+    @Test func theWarmUsesTheVoiceThatWasPicked() async throws {
+        let (p, engine, _, _, store) = try make()
+        await store.start()
+        p.warm(fable)
+        await p.warmTask?.value
+        #expect(await engine.loadVoices == ["bm_fable"])
+        // A speak while cold warms in its own voice rather than in a default.
+        let (q, engine2, playback2, _, store2) = try make()
+        await store2.start()
+        q.speak("One.", voice: fable, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback2.played.count == 1 })
+        #expect(await engine2.loadVoices == ["bm_fable"])
+        // And a warm with no voice named keeps the catalogue's first.
+        let (r, engine3, _, _, store3) = try make()
+        await store3.start()
+        r.warm()
+        await r.warmTask?.value
+        #expect(await engine3.loadVoices == ["af_bella"])
     }
 
     @Test func warmWithNothingInstalledDoesNothing() async throws {

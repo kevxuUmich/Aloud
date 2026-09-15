@@ -44,6 +44,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// being rendered. The engine is one actor, so a prefetch started then would put
     /// that sentence behind it, and the SDK honours cancellation only between chunks.
     private var pendingPrepare: (text: String, voice: Voice, rate: Rate)?
+    /// The voice the buckets are warmed in: whatever was last picked, previewed or
+    /// spoken, and the catalogue's first before any of those.
+    private var warmVoice = KokoroCatalogue.voices[0].kokoroID
     /// The level the reader last chose. `speak` is handed one with the sentence, but a
     /// change made while that sentence is still being rendered would otherwise be heard
     /// only from the sentence after it, which on this engine is seconds away.
@@ -105,7 +108,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         speakTask = Task {
             defer { finishedRendering() }
             if !isLoaded {
-                warm()
+                warm(voice)
                 await warmTask?.value
             }
             guard gen == generation else { return }
@@ -186,7 +189,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         previewTask = Task {
             defer { finishedRendering() }
             if !isLoaded {
-                warm()
+                warm(voice)
                 await warmTask?.value
             }
             guard gen == generation, isLoaded else { return }
@@ -199,9 +202,14 @@ public final class KokoroVoiceProvider: VoiceProvider {
         }
     }
 
-    /// Loads the models off the main actor, once. Called when a Kokoro voice is picked
-    /// and at launch when the saved voice is one.
-    public func warm() {
+    /// Loads the models off the main actor, once, warming them in the voice given.
+    /// Called when a Kokoro voice is picked and at launch when the saved voice is one;
+    /// `voice` is that voice, so the buckets are warmed in the one the reader will hear
+    /// rather than in a default they may never pick.
+    public func warm(_ voice: Voice? = nil) {
+        if let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) {
+            warmVoice = kokoro.kokoroID
+        }
         guard !isLoaded, warmTask == nil, let root = store.installedRoot else { return }
         // A fresh attempt: whatever the last one concluded is no longer the answer, so
         // the voices are back until this one says otherwise.
@@ -211,11 +219,12 @@ public final class KokoroVoiceProvider: VoiceProvider {
         let epoch = warmGeneration
         let cache = store.compiledCache
         let engine = engine
+        let voiceID = warmVoice
         warmTask = Task {
             var failure: String?
             var cancelled = false
             do {
-                try await engine.load(root: root, cache: cache)
+                try await engine.load(root: root, cache: cache, voice: voiceID)
             } catch KokoroEngineError.cancelled {
                 cancelled = true
             } catch {
