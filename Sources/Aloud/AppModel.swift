@@ -232,10 +232,14 @@ final class AppModel {
     }
 
     /// The one writer of `player.voice` after init, so the choice and what is
-    /// remembered can never disagree. It takes at the next sentence. A Kokoro voice
-    /// loads its models now, so the first sentence does not wait; an Apple voice gives
-    /// that memory back.
+    /// remembered can never disagree, save for the launch restore in `start()`, which
+    /// writes `player.voice` once from the same remembered id. It takes at the next
+    /// sentence. A Kokoro voice loads its models now, so the first sentence does not
+    /// wait; an Apple voice gives that memory back.
     func pickVoice(_ v: Voice) {
+        // An explicit pick outranks the row that started a download still running, so
+        // the install does not overrule the reader when it completes.
+        pendingKokoroPick = nil
         player.voice = v
         Defaults.voiceID = v.id
         if KokoroCatalogue.isKokoro(v.id) {

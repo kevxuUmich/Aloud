@@ -728,6 +728,23 @@ import Vault
         }
     }
 
+    /// A pick made while the download runs is the reader's last word: the install
+    /// completing does not put the clicked row back over it.
+    @Test func anApplePickDuringTheDownloadWins() async throws {
+        try await withKokoroModel { model, _, store, _, _, _ in
+            await store.start()
+            model.downloadKokoro(picking: KokoroCatalogue.voices[6].voice)
+            let fake = try #require(model.provider.voices.first { $0.id == "fake" })
+            model.pickVoice(fake)
+            #expect(model.pendingKokoroPick == nil, "the explicit pick clears the pending one")
+            try install(store)
+            await store.start()
+            store.onInstalled?()
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.pendingKokoroPick == nil)
+        }
+    }
+
     @Test func cancelAndRemoveReachTheStore() async throws {
         try await withKokoroModel { model, _, store, downloader, _, _ in
             await store.start()

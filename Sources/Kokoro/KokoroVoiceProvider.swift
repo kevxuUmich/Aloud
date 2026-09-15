@@ -5,7 +5,10 @@ import os
 /// The second engine behind the protocol the player speaks through. The voices are the
 /// catalogue when the model is installed and nothing otherwise; a sentence is rendered
 /// by the engine and played by the player; the next one is rendered ahead.
-@MainActor
+/// Observable because the picker draws `isWarming` as a spinner on the row it belongs
+/// to: without it the spinner appears on the pick that renders it and then stays until
+/// something else redraws the list.
+@Observable @MainActor
 public final class KokoroVoiceProvider: VoiceProvider {
     public let store: KokoroStore
     private let engine: any KokoroSynthesizing

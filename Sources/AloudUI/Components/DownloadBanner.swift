@@ -28,10 +28,12 @@ public struct DownloadBanner: View {
             Text(title).font(Type.caption).foregroundStyle(Ink.soft)
             switch phase {
             case .idle(let caption):
-                Text(caption)
-                    .font(Type.caption)
-                    .foregroundStyle(Ink.soft)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !caption.isEmpty {
+                    Text(caption)
+                        .font(Type.caption)
+                        .foregroundStyle(Ink.soft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             case .progress(let fraction):
                 HStack(spacing: Space.s) {
                     ProgressView(value: fraction)

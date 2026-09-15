@@ -1,6 +1,7 @@
 import AloudUI
 import AppKit
 import Foundation
+import Kokoro
 import Speech
 import SwiftUI
 
@@ -23,12 +24,27 @@ struct VoicePopover: View {
     /// view only draws.
     private var shown: [VoiceGroup] { VoiceSearch.filter(groups, query: query) }
 
+    /// The Kokoro ids the search leaves standing, whether or not the model is here: the
+    /// section draws them, and the "no voices match" line has to know about them too, or
+    /// a search for a Kokoro voice says nothing matched above the row that did. The
+    /// search is the same pure function the language sections use, over the catalogue as
+    /// one group, so a Kokoro voice is found by name, region or quality before it is
+    /// installed as well as after.
+    private var kokoroMatches: [String] {
+        guard model.kokoro != nil else { return [] }
+        let section = VoiceGroup(
+            language: "kokoro", name: Copy.kokoroSection, voices: KokoroCatalogue.speechVoices)
+        return VoiceSearch.filter([section], query: query).first?.voices.map(\.id) ?? []
+    }
+
     /// The provider caches the installed set, and downloading a voice in System
     /// Settings while Aloud is running is exactly the moment that cache is wrong. Every
     /// opening asks the system again, which is cheap once and only once.
     private func load() {
         model.provider.refreshVoices()
-        let voices = model.provider.voices
+        // Kokoro voices have their own section above; the language sections are the
+        // rest.
+        let voices = model.provider.voices.filter { !KokoroCatalogue.isKokoro($0.id) }
         groups = VoiceGroups.group(voices, currentLanguage: VoiceGroups.currentLanguage)
         recommended = RecommendedVoices.resolve(voices)
     }
@@ -73,6 +89,65 @@ struct VoicePopover: View {
         }
     }
 
+    /// The Kokoro voices, when the app has the engine: the header carries the caption,
+    /// the download or the failure, and the rows are the catalogue by region. Before the
+    /// download every row is a download row; during it they are dimmed; after it they
+    /// are voices like any other, and the picked one spins while its models load. A
+    /// search shows the section only when a Kokoro voice matches.
+    @ViewBuilder private var kokoroSection: some View {
+        if let kokoro = model.kokoro, let store = model.kokoroStore {
+            let installed = store.isInstalledNow
+            let matching = kokoroMatches
+            if !matching.isEmpty {
+                Section {
+                    ForEach(KokoroCatalogue.regions) { region in
+                        ForEach(region.voices.filter { matching.contains($0.id) }) { k in
+                            let v = k.voice
+                            let picked = v.id == model.player.voice?.id
+                            VoiceRow(
+                                name: v.name, region: v.regionName, quality: v.quality.label,
+                                badge: installed ? nil : store.release.sizeLabel,
+                                isSelected: installed && picked,
+                                isInstalled: installed,
+                                isBusy: installed && picked && kokoro.isWarming,
+                                isDimmed: Self.isBusy(store.state),
+                                onPreview: { model.player.preview(v) },
+                                onPick: {
+                                    if installed {
+                                        model.pickVoice(v)
+                                    } else {
+                                        model.downloadKokoro(picking: v)
+                                    }
+                                })
+                        }
+                    }
+                } header: {
+                    DownloadBanner(
+                        title: Copy.kokoroSection, phase: Self.phase(store.state),
+                        onCancel: { model.cancelKokoroDownload() },
+                        onRetry: { model.downloadKokoro(picking: model.pendingKokoroPick) })
+                }
+            }
+        }
+    }
+
+    static func phase(_ state: KokoroStoreState) -> DownloadBanner.Phase {
+        switch state {
+        case .absent: .idle(Copy.kokoroCaption)
+        case .downloading(let f): .progress(f)
+        case .installing: .busy(Copy.kokoroInstalling)
+        case .installed: .idle("")
+        case .failed(let message): .failed(message)
+        }
+    }
+
+    static func isBusy(_ state: KokoroStoreState) -> Bool {
+        switch state {
+        case .downloading, .installing: true
+        default: false
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
             Text("Voice").font(Type.title)
@@ -82,13 +157,14 @@ struct VoicePopover: View {
             // A filter that matched nothing says so. An installed set that is empty
             // before `load()` has run is not that, and would flash the words for a
             // frame, so the empty list keeps quiet.
-            if shown.isEmpty, !groups.isEmpty {
+            if shown.isEmpty, kokoroMatches.isEmpty, !groups.isEmpty {
                 Text("No voices match")
                     .font(Type.caption)
                     .foregroundStyle(Ink.soft)
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Space.xs) {
+                    kokoroSection
                     recommendedSection
                     ForEach(shown) { g in
                         Section {
