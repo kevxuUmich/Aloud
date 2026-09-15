@@ -71,11 +71,15 @@ public struct BundleBuilder: Sendable {
 
     public let inputs: URL
     public let packages: [String]
+    /// The bucket seconds the manifest declares. The SDK reads them to decide which
+    /// acoustic packages it may pick between, so they and `packages` are one decision.
+    public let buckets: [Int]
     public let voices: [String]
 
-    public init(inputs: URL, packages: [String], voices: [String]) {
+    public init(inputs: URL, packages: [String], buckets: [Int], voices: [String]) {
         self.inputs = inputs
         self.packages = packages
+        self.buckets = buckets
         self.voices = voices
     }
 
@@ -137,7 +141,7 @@ public struct BundleBuilder: Sendable {
             sdkCommit: provenance.sdkCommit, hfRepoID: provenance.hfRepo, hfRevision: provenance.hfRevision,
             hfDownloadManifestSHA256: Digest.sha256(of: download),
             minimumPlatforms: ["macOS": "15.0", "iOS": "18.0"], supportedLanguages: ["en-US", "en-GB"],
-            bundleProfile: "aloud", buckets: [15], durationTokenSizes: [128], modelPackages: modelPackages,
+            bundleProfile: "aloud", buckets: buckets, durationTokenSizes: [128], modelPackages: modelPackages,
             voices: voiceDigests,
             runtimeAssets: .init(
                 vocab: assets["kokoro-vocab.json"]!, hnsfWeights: assets["hnsf_weights.json"]!))

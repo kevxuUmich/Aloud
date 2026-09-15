@@ -156,7 +156,7 @@ import Testing
         #expect(
             KokoroInputs.all.filter { $0.path.hasPrefix("kokoro.js/") }.allSatisfy { $0.bytes == 522_240 })
         #expect(
-            Set(KokoroInputs.expectedTreeDigests.keys)
+            Set(KokoroInputs.treeDigests.keys)
                 == Set(KokoroInputs.packages.map { "coreml/\($0).mlpackage" }))
     }
 

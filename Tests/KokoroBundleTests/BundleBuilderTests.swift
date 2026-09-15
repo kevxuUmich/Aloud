@@ -77,7 +77,7 @@ import Testing
     func build() throws -> (root: URL, manifest: RuntimeManifest) {
         let inputs = try makeInputs()
         let root = try scratch().appendingPathComponent("kokoro-1")
-        let m = try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+        let m = try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
             .build(into: root, provenance: try provenance(for: inputs))
         return (root, m)
     }
@@ -148,12 +148,24 @@ import Testing
         #expect(Set(assets.keys) == ["vocab", "hnsf_weights"])
     }
 
+    /// The buckets the manifest declares are the caller's, since the bundle's whole point
+    /// is which acoustic shapes the SDK may pick between.
+    @Test func theManifestDeclaresTheBucketsItWasGiven() throws {
+        let inputs = try makeInputs()
+        let root = try scratch().appendingPathComponent("kokoro-2")
+        let m = try BundleBuilder(
+            inputs: inputs, packages: Self.packages, buckets: [3, 7, 10, 15], voices: Self.voices
+        ).build(into: root, provenance: try provenance(for: inputs))
+        #expect(m.buckets == [3, 7, 10, 15])
+    }
+
     /// Two builds from the same inputs write the same bytes: no timestamp, sorted keys.
     @Test func twoBuildsAreIdentical() throws {
         let inputs = try makeInputs()
         let a = try scratch().appendingPathComponent("a")
         let b = try scratch().appendingPathComponent("b")
-        let builder = BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+        let builder = BundleBuilder(
+            inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
         let pinned = try provenance(for: inputs)
         try builder.build(into: a, provenance: pinned)
         try builder.build(into: b, provenance: pinned)
@@ -173,7 +185,7 @@ import Testing
         for path in paths { try shared.write(to: inputs.appendingPathComponent(path)) }
         let root = try scratch().appendingPathComponent("kokoro-1")
 
-        try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+        try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
             .build(into: root, provenance: try provenance(for: inputs))
 
         let numbers = try paths.map { path -> Int in
@@ -200,7 +212,7 @@ import Testing
         try FileManager.default.removeItem(at: inputs.appendingPathComponent("kokoro.js/voices/bm_fable.bin"))
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.missingInput("kokoro.js/voices/bm_fable.bin")) {
-            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+            try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
                 .build(into: root, provenance: try provenance(for: inputs))
         }
     }
@@ -209,7 +221,7 @@ import Testing
         let inputs = try makeInputs()
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.badVoiceID("../etc")) {
-            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: ["../etc"])
+            try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: ["../etc"])
                 .build(into: root, provenance: try provenance(for: inputs))
         }
     }
@@ -218,7 +230,7 @@ import Testing
         let inputs = try makeInputs()
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.badPackageName("../x")) {
-            try BundleBuilder(inputs: inputs, packages: ["../x"], voices: Self.voices)
+            try BundleBuilder(inputs: inputs, packages: ["../x"], buckets: [15], voices: Self.voices)
                 .build(into: root, provenance: try provenance(for: inputs))
         }
     }
@@ -234,7 +246,7 @@ import Testing
         try data.write(to: voice)
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.provenanceMismatch("kokoro.js/voices/af_bella.bin")) {
-            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+            try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
                 .build(into: root, provenance: pinned)
         }
     }
@@ -248,7 +260,7 @@ import Testing
             to: inputs.appendingPathComponent("coreml/kokoro_duration_t128.mlpackage/extra.bin"))
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.unpinnedInput("coreml/kokoro_duration_t128.mlpackage/extra.bin")) {
-            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+            try BundleBuilder(inputs: inputs, packages: Self.packages, buckets: [15], voices: Self.voices)
                 .build(into: root, provenance: pinned)
         }
     }

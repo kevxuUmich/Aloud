@@ -58,15 +58,27 @@ try await fetcher.fetch(KokoroInputs.all) { print($0) }
 print("inputs complete: \(KokoroInputs.all.count) files under \(inputs.path)")
 
 let root = out.appendingPathComponent(name)
-let manifest = try BundleBuilder(inputs: inputs, packages: KokoroInputs.packages, voices: KokoroInputs.voices)
-    .build(into: root, provenance: KokoroInputs.provenance)
+let manifest = try BundleBuilder(
+    inputs: inputs, packages: KokoroInputs.packages, buckets: KokoroInputs.buckets,
+    voices: KokoroInputs.voices
+).build(into: root, provenance: KokoroInputs.provenance)
+
+// Every package is pinned, by upstream's own recorded digest where upstream has one and
+// by this repository's first build where it does not; both are refused on a difference.
+let pins = KokoroInputs.treeDigests
 for package in manifest.modelPackages {
-    let mark =
-        package.treeSHA256 == KokoroInputs.expectedTreeDigests[package.path] ? "matches upstream" : "DIFFERS"
+    let mark: String
+    if package.treeSHA256 != pins[package.path] {
+        mark = "DIFFERS"
+    } else if KokoroInputs.expectedTreeDigests[package.path] != nil {
+        mark = "matches upstream"
+    } else {
+        mark = "matches the recorded pin"
+    }
     print("\(package.path): \(package.treeSHA256) \(mark)")
 }
-guard manifest.modelPackages.allSatisfy({ $0.treeSHA256 == KokoroInputs.expectedTreeDigests[$0.path] }) else {
-    print("a package digest differs from the one upstream recorded; not archiving")
+guard manifest.modelPackages.allSatisfy({ $0.treeSHA256 == pins[$0.path] }) else {
+    print("a package digest differs from its pin; not archiving")
     exit(1)
 }
 

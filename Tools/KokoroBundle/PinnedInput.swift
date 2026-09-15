@@ -33,12 +33,23 @@ public enum KokoroInputs {
             "https://raw.githubusercontent.com/kevinxu-cmd/kokoro-coreml/\(sdkRevision)/swift-tts/Sources/KokoroTTS/Resources/KokoroRuntime/"
     )!
 
-    /// The SDK's minimum set: the padded 128-token duration model and the three stages
-    /// of the one 15-second bucket.
+    /// The padded 128-token duration model and the three stages of each of the four
+    /// acoustic buckets. The SDK renders a sentence over the whole of the bucket it
+    /// picks, so a bundle with only the 15-second bucket makes a three-second sentence
+    /// cost what a fifteen-second one does; the short buckets are where the wall clock
+    /// goes. Each bucket needs its `kokoro_f0ntrain_t<tFrames>`, `kokoro_decoder_pre_<n>s`
+    /// and `kokoro_decoder_har_post_<n>s`, with tFrames 120, 280, 400 and 600 for 3, 7,
+    /// 10 and 15 seconds.
     public static let packages = [
-        "kokoro_duration_t128", "kokoro_f0ntrain_t600", "kokoro_decoder_pre_15s",
+        "kokoro_duration_t128",
+        "kokoro_f0ntrain_t120", "kokoro_f0ntrain_t280", "kokoro_f0ntrain_t400", "kokoro_f0ntrain_t600",
+        "kokoro_decoder_pre_3s", "kokoro_decoder_pre_7s", "kokoro_decoder_pre_10s", "kokoro_decoder_pre_15s",
+        "kokoro_decoder_har_post_3s", "kokoro_decoder_har_post_7s", "kokoro_decoder_har_post_10s",
         "kokoro_decoder_har_post_15s",
     ]
+
+    /// The bucket seconds the manifest declares, one per acoustic triple above.
+    public static let buckets = [3, 7, 10, 15]
 
     /// The seven voices Aloud ships: four American, three British.
     public static let voices = [
@@ -216,6 +227,40 @@ public enum KokoroInputs {
         "coreml/kokoro_decoder_har_post_15s.mlpackage":
             "156fbd526c9eac2fc86c46a2fda4485087afaa925548268b560988d71239bae1",
     ]
+
+    /// Not upstream's. Upstream's hosted manifest at this revision declares only the
+    /// 15-second bucket, so for the nine packages the short buckets added there is
+    /// nothing of upstream's to compare against. These are the digests this repository's
+    /// own first build computed from the pinned files, recorded so that a later build
+    /// that comes out different is refused rather than quietly shipped. They prove
+    /// nothing about agreement with upstream's builder; `expectedTreeDigests` above is
+    /// what proves that, and it is the same digest code over both sets.
+    public static let recordedTreeDigests: [String: String] = [
+        "coreml/kokoro_f0ntrain_t120.mlpackage":
+            "8480e5bd851985aa1c508f9d977add23db8d8cae369ee28de278d031d3d0b1f8",
+        "coreml/kokoro_f0ntrain_t280.mlpackage":
+            "3e212c0e71c7919052b233a629e98d09ffdde2b377dd601ebfa4e74e05aa6a33",
+        "coreml/kokoro_f0ntrain_t400.mlpackage":
+            "2607fe1b266fabc67d711f20b1b235698513599ac4d3b9a026cad1dc1fece652",
+        "coreml/kokoro_decoder_pre_3s.mlpackage":
+            "5f1d39c04dd0c18aa01cb5657846bbc16237a9a7d7cf1573108ef653bf134f17",
+        "coreml/kokoro_decoder_pre_7s.mlpackage":
+            "f607e8137dd5937b35aec4b3ed013a2377c492d895ebccec490347b94b7ff080",
+        "coreml/kokoro_decoder_pre_10s.mlpackage":
+            "fec63fb9d986525803e41f46263210095e37851d02c4f12ec46a129f2fd83341",
+        "coreml/kokoro_decoder_har_post_3s.mlpackage":
+            "83c92b4854929713545999b77aac1c0525b1634925e985c82482a57669809704",
+        "coreml/kokoro_decoder_har_post_7s.mlpackage":
+            "00f944548c54b3e3649b1ace800c96ebf784f980b8f85eaee7f43a54f9bda5dd",
+        "coreml/kokoro_decoder_har_post_10s.mlpackage":
+            "4245c65012624d9395d5aacd704dcaf7b3c911025bd4bdc6882dd2a85ce8cc5c",
+    ]
+
+    /// Every package's pinned tree digest, upstream's where upstream has one and this
+    /// repository's own record where it does not.
+    public static var treeDigests: [String: String] {
+        expectedTreeDigests.merging(recordedTreeDigests) { upstream, _ in upstream }
+    }
 
     public static var provenance: Provenance {
         Provenance(sdkCommit: sdkRevision, hfRepo: hfRepo, hfRevision: hfRevision, inputs: all.map(\.record))
