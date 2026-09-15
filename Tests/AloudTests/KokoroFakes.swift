@@ -52,17 +52,23 @@ import Speech
 }
 
 /// An engine that answers from a table and can be told to fail or to take its time.
+/// Its chunks are the text split on " | ", so a test writes "One, | two." to get two.
 actor FakeEngine: KokoroSynthesizing {
     struct Call: Equatable { let text: String; let voice: String; let speed: Double }
     var calls: [Call] = []
+    var chunkCalls: [String] = []
     var loads: [URL] = []
     /// The voice each load was told to warm in.
     var loadVoices: [String] = []
     var unloads = 0
     var failLoad: String?
     var failSynthesis: KokoroEngineError?
+    /// Texts whose synthesis fails, so one chunk of a sentence can fail while the rest render.
+    var failTexts: Set<String> = []
     var gate: CheckedContinuation<Void, Never>?
     var holdNext = false
+    /// When set, only a synthesis of this text is held.
+    var holdText: String?
     var loadGate: CheckedContinuation<Void, Never>?
     var holdLoadNext = false
 
@@ -75,14 +81,21 @@ actor FakeEngine: KokoroSynthesizing {
         }
         if let failLoad { throw KokoroEngineError.load(failLoad) }
     }
+    func chunks(of text: String, voice: String, speed: Double) async throws -> [String] {
+        chunkCalls.append(text)
+        if let failSynthesis { throw failSynthesis }
+        return text.components(separatedBy: " | ")
+    }
     func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float] {
         calls.append(Call(text: text, voice: voice, speed: speed))
-        if holdNext {
+        if holdNext, holdText == nil || holdText == text {
             holdNext = false
+            holdText = nil
             await withCheckedContinuation { gate = $0 }
             try Task.checkCancellation()
         }
         if let failSynthesis { throw failSynthesis }
+        if failTexts.contains(text) { throw KokoroEngineError.synthesis("failed") }
         return [Float](repeating: 0.1, count: text.count)
     }
     func unload() { unloads += 1 }
@@ -90,7 +103,11 @@ actor FakeEngine: KokoroSynthesizing {
         gate?.resume()
         gate = nil
     }
-    func hold() { holdNext = true }
+    /// Holds the next synthesis, or the next synthesis of `text` when one is named.
+    func hold(_ text: String? = nil) {
+        holdNext = true
+        holdText = text
+    }
     /// The same for the load, so a test can unload while the models are still arriving.
     func holdLoad() { holdLoadNext = true }
     func releaseLoad() {
@@ -99,19 +116,17 @@ actor FakeEngine: KokoroSynthesizing {
     }
     func setFailLoad(_ s: String?) { failLoad = s }
     func setFailSynthesis(_ e: KokoroEngineError?) { failSynthesis = e }
+    func setFailTexts(_ texts: Set<String>) { failTexts = texts }
 }
 
-/// Plays nothing and lets the test say when the buffer has been heard.
+/// Plays nothing and lets the test say when each queued buffer has been heard.
 @MainActor final class FakePlayback: KokoroPlaying {
-    struct Played { let samples: [Float]; let volume: Double; let rate: Double }
-    var played: [Played] = []
+    var played: [[Float]] = []
     var stops = 0
-    private var completion: (@MainActor () -> Void)?
-    func play(
-        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
-    ) {
-        played.append(Played(samples: samples, volume: volume, rate: rate))
-        self.completion = completion
+    private var completions: [@MainActor () -> Void] = []
+    func enqueue(_ samples: [Float], completion: @escaping @MainActor () -> Void) {
+        played.append(samples)
+        completions.append(completion)
     }
     var volumes: [Double] = []
     var rates: [Double] = []
@@ -119,12 +134,12 @@ actor FakeEngine: KokoroSynthesizing {
     func setVolume(_ volume: Double) { volumes.append(volume) }
     func setRate(_ rate: Double) { rates.append(rate) }
     func shutdown() { shutdowns += 1 }
-    /// Counts the stop and keeps the completion: a real player can call back after one,
+    /// Counts the stop and keeps the completions: a real player calls back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }
+    /// The oldest buffer still queued has been heard.
     func finish() {
-        let c = completion
-        completion = nil
-        c?()
+        guard !completions.isEmpty else { return }
+        completions.removeFirst()()
     }
 }

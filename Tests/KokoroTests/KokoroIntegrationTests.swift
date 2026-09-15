@@ -34,7 +34,25 @@ import Testing
             #expect(seconds > 1 && seconds < 5, "\(voice)")
             #expect(finite, "\(voice)")
             #expect(audible, "\(voice)")
+            // Trimmed: the model's 0.35 s lead and 0.4 s tail are gone, and the speech
+            // starts and ends within the margin.
+            let loud = { (x: Float) in abs(x) >= Silence.threshold }
+            #expect(samples.prefix(Silence.margin + 1).contains(where: loud), "\(voice) lead")
+            #expect(samples.suffix(Silence.margin + 1).contains(where: loud), "\(voice) tail")
         }
+        // A sentence past the model's shape is several chunks, their texts are the
+        // sentence, and each renders on its own as the one chunk it is.
+        let chunks = try await engine.chunks(of: Self.longestSentence, voice: "af_bella", speed: 1)
+        #expect(chunks.count > 1, "\(chunks)")
+        #expect(chunks.joined(separator: " ") == Self.longestSentence, "\(chunks)")
+        for chunk in chunks {
+            #expect(try await engine.chunks(of: chunk, voice: "af_bella", speed: 1) == [chunk])
+            let samples = try await engine.synthesize(chunk, voice: "af_bella", speed: 1)
+            let loud = samples.prefix(Silence.margin + 1).contains { abs($0) >= Silence.threshold }
+            #expect(loud, "\(chunk)")
+        }
+        let short = try await engine.chunks(of: Self.shortSentence, voice: "af_bella", speed: 1)
+        #expect(short == [Self.shortSentence])
         await #expect(throws: KokoroEngineError.nothingToSay) {
             _ = try await engine.synthesize("***", voice: "af_bella", speed: 1)
         }
@@ -62,6 +80,9 @@ import Testing
     ///     4.450 s    2x    0.353    0.345    0.347
     ///     13.16 s    1x    0.941    0.925    0.936
     ///     7.315 s    2x    0.819    0.833    0.823
+    ///
+    /// Taken before renders were trimmed: `Silence.trim` since removes about 0.75 s of
+    /// silence from every render's ends and changes no wall clock.
     ///
     /// The short sentence's first three calls at 1x are the only ones that move: they
     /// overlap the 3, 10 and 15 second buckets still warming behind `load`, and once

@@ -1,17 +1,20 @@
 import AVFoundation
 import Foundation
 
-/// Plays one buffer of samples and says when it has been heard, so a fake can stand in.
+/// Queues buffers of samples and says when each has been heard, so a fake can stand in.
 @MainActor
 public protocol KokoroPlaying: AnyObject {
-    /// `rate` is the time stretch to apply on the way out, which is how a speed the
-    /// model cannot deliver is made up. 1 is the samples as they were rendered.
-    func play(_ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void)
-    /// The level of whatever is playing, changed where it stands. Nothing is re-rendered.
+    /// Queues one buffer behind whatever is queued, starting the device if it is idle, and
+    /// calls back once that buffer has been heard. Nothing already queued is touched, so
+    /// a sentence can be heard chunk by chunk as its chunks are rendered.
+    func enqueue(_ samples: [Float], completion: @escaping @MainActor () -> Void)
+    /// The level of whatever is playing and queued, changed where it stands.
     func setVolume(_ volume: Double)
-    /// The time stretch of whatever is playing, changed where it stands, for a speed the
-    /// samples in hand can still be played at.
+    /// The time stretch of whatever is playing and queued, changed where it stands: how a
+    /// speed the model did not render is made up, and how a speed change mid-sentence is
+    /// heard without rendering the sentence again. 1 is the samples as rendered.
     func setRate(_ rate: Double)
+    /// Drops everything queued.
     func stop()
     /// Stops and gives the audio device back, for a reader who has picked another engine
     /// and will not be spoken to by this one again until they pick it back.
@@ -19,9 +22,10 @@ public protocol KokoroPlaying: AnyObject {
 }
 
 /// An audio engine with one player node at the model's 24 kHz mono, through a time
-/// stretch. A new buffer replaces whatever is playing. A device change stops the engine
-/// out from under it; the next `play` restarts it on the new device. The pause on that
-/// same change is the app model's, through `OutputDeviceWatcher`, not this class's.
+/// stretch. Buffers queue on the node in the order they arrive. A device change stops the
+/// engine out from under it; the next `enqueue` restarts it on the new device. The pause
+/// on that same change is the app model's, through `OutputDeviceWatcher`, not this
+/// class's.
 @MainActor
 public final class KokoroPlayback: KokoroPlaying {
     /// Nonisolated so `KokoroEngine`, a plain actor, can check the SDK's output against
@@ -30,12 +34,13 @@ public final class KokoroPlayback: KokoroPlaying {
 
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
-    /// The speed the model could not deliver. It sits between the player node and the
-    /// mixer at all times, at rate 1 whenever nothing is being stretched, so the graph
-    /// does not have to be rewired when the reader changes speed mid-sentence.
+    /// The speed the model could not deliver, and the rest of a sentence at a speed the
+    /// reader changed to mid-way. It sits between the player node and the mixer at all
+    /// times, at rate 1 whenever nothing is being stretched, so the graph does not have
+    /// to be rewired when the reader changes speed.
     private let timePitch = AVAudioUnitTimePitch()
     private let format = AVAudioFormat(standardFormatWithSampleRate: KokoroPlayback.sampleRate, channels: 1)!
-    /// A completion from a buffer that was replaced or stopped is not the current one's.
+    /// A completion from a buffer that was dropped by a stop is not one the caller wants.
     private var generation = 0
 
     public init() {
@@ -45,12 +50,10 @@ public final class KokoroPlayback: KokoroPlaying {
         engine.connect(timePitch, to: engine.mainMixerNode, format: format)
     }
 
-    public func play(
-        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
-    ) {
-        node.stop()
-        generation += 1
+    public func enqueue(_ samples: [Float], completion: @escaping @MainActor () -> Void) {
         let gen = generation
+        // An empty buffer is heard at once. The caller keeps its own order and never
+        // hands one over, so this is only a guard against scheduling nothing.
         guard !samples.isEmpty else {
             completion()
             return
@@ -72,14 +75,14 @@ public final class KokoroPlayback: KokoroPlaying {
         }
         samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
         buffer.frameLength = AVAudioFrameCount(samples.count)
-        node.volume = Self.level(volume)
-        timePitch.rate = Self.stretch(rate)
         node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
             Task { @MainActor [weak self] in
                 guard let self, gen == self.generation else { return }
                 completion()
             }
         }
+        // A no-op on a node already playing; what it is for is the first buffer after a
+        // stop or a device change, when the node is idle.
         node.play()
     }
 

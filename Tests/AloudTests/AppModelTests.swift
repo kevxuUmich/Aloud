@@ -877,13 +877,14 @@ import Vault
         }
     }
 
-    /// The prize the speed cap buys, driven through the stack the app actually assembles
-    /// rather than straight at the provider: `setRate` goes through `Player`, through the
-    /// composite, to the Kokoro provider, and a change among the speeds at or above the
-    /// cap asks the engine for nothing, because the samples in hand are already the ones
-    /// those speeds are played from. A change across the cap does need new audio and says
-    /// so, and then the sentence is spoken again as it always was.
-    @Test func aSpeedChangeAboveTheCapCostsTheEngineNothing() async throws {
+    /// A speed change, driven through the stack the app actually assembles rather than
+    /// straight at the provider: `setRate` goes through `Player`, through the composite,
+    /// to the Kokoro provider, which stretches the sentence in the air rather than
+    /// tearing it down. Among the speeds at or above the cap that asks the engine for
+    /// nothing at all, since the sentence rendered ahead is already the one those speeds
+    /// are played from; across the cap the sentence ahead is rendered again at the new
+    /// speed, and the one being heard still is not stopped.
+    @Test func aSpeedChangeStretchesTheSentenceAndCostsTheEngineAtMostTheNextOne() async throws {
         try await withKokoroModel { model, kokoro, store, _, apple, engine in
             try install(store)
             await store.start()
@@ -906,12 +907,13 @@ import Vault
             #expect(model.player.rate == .x3)
             #expect(model.player.isPlaying)
 
-            // Across the cap the engine has no rendering to play at the new speed, so it
-            // says so and the sentence is spoken again, as it always was.
+            // Across the cap the sentence ahead is rendered again at the new speed; the
+            // one being heard is stretched, not stopped.
             model.setRate(.x1)
-            #expect(apple.stops == 1)
-            try await poll { await engine.calls.count > 2 }
-            #expect(await engine.calls.last?.speed == 1)
+            #expect(apple.stops == 0)
+            #expect(model.player.isPlaying)
+            try await poll { await engine.calls.count == 3 }
+            #expect(await engine.calls.last == .init(text: "Four five six.", voice: "af_bella", speed: 1))
         }
     }
 

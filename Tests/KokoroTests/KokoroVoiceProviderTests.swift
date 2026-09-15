@@ -5,17 +5,23 @@ import Testing
 @testable import Kokoro
 
 /// An engine that answers from a table and can be told to fail or to take its time.
+/// Its chunks are the text split on " | ", so a test writes "One, | two." to get two.
 actor FakeEngine: KokoroSynthesizing {
     struct Call: Equatable { let text: String; let voice: String; let speed: Double }
     var calls: [Call] = []
+    var chunkCalls: [String] = []
     var loads: [URL] = []
     /// The voice each load was told to warm in.
     var loadVoices: [String] = []
     var unloads = 0
     var failLoad: String?
     var failSynthesis: KokoroEngineError?
+    /// Texts whose synthesis fails, so one chunk of a sentence can fail while the rest render.
+    var failTexts: Set<String> = []
     var gate: CheckedContinuation<Void, Never>?
     var holdNext = false
+    /// When set, only a synthesis of this text is held.
+    var holdText: String?
     var loadGate: CheckedContinuation<Void, Never>?
     var holdLoadNext = false
 
@@ -28,14 +34,21 @@ actor FakeEngine: KokoroSynthesizing {
         }
         if let failLoad { throw KokoroEngineError.load(failLoad) }
     }
+    func chunks(of text: String, voice: String, speed: Double) async throws -> [String] {
+        chunkCalls.append(text)
+        if let failSynthesis { throw failSynthesis }
+        return text.components(separatedBy: " | ")
+    }
     func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float] {
         calls.append(Call(text: text, voice: voice, speed: speed))
-        if holdNext {
+        if holdNext, holdText == nil || holdText == text {
             holdNext = false
+            holdText = nil
             await withCheckedContinuation { gate = $0 }
             try Task.checkCancellation()
         }
         if let failSynthesis { throw failSynthesis }
+        if failTexts.contains(text) { throw KokoroEngineError.synthesis("failed") }
         return [Float](repeating: 0.1, count: text.count)
     }
     func unload() { unloads += 1 }
@@ -43,7 +56,11 @@ actor FakeEngine: KokoroSynthesizing {
         gate?.resume()
         gate = nil
     }
-    func hold() { holdNext = true }
+    /// Holds the next synthesis, or the next synthesis of `text` when one is named.
+    func hold(_ text: String? = nil) {
+        holdNext = true
+        holdText = text
+    }
     /// The same for the load, so a test can unload while the models are still arriving.
     func holdLoad() { holdLoadNext = true }
     func releaseLoad() {
@@ -52,19 +69,17 @@ actor FakeEngine: KokoroSynthesizing {
     }
     func setFailLoad(_ s: String?) { failLoad = s }
     func setFailSynthesis(_ e: KokoroEngineError?) { failSynthesis = e }
+    func setFailTexts(_ texts: Set<String>) { failTexts = texts }
 }
 
-/// Plays nothing and lets the test say when the buffer has been heard.
+/// Plays nothing and lets the test say when each queued buffer has been heard.
 @MainActor final class FakePlayback: KokoroPlaying {
-    struct Played { let samples: [Float]; let volume: Double; let rate: Double }
-    var played: [Played] = []
+    var played: [[Float]] = []
     var stops = 0
-    private var completion: (@MainActor () -> Void)?
-    func play(
-        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
-    ) {
-        played.append(Played(samples: samples, volume: volume, rate: rate))
-        self.completion = completion
+    private var completions: [@MainActor () -> Void] = []
+    func enqueue(_ samples: [Float], completion: @escaping @MainActor () -> Void) {
+        played.append(samples)
+        completions.append(completion)
     }
     var volumes: [Double] = []
     var rates: [Double] = []
@@ -72,13 +87,13 @@ actor FakeEngine: KokoroSynthesizing {
     func setVolume(_ volume: Double) { volumes.append(volume) }
     func setRate(_ rate: Double) { rates.append(rate) }
     func shutdown() { shutdowns += 1 }
-    /// Counts the stop and keeps the completion: a real player can call back after one,
+    /// Counts the stop and keeps the completions: a real player calls back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }
+    /// The oldest buffer still queued has been heard.
     func finish() {
-        let c = completion
-        completion = nil
-        c?()
+        guard !completions.isEmpty else { return }
+        completions.removeFirst()()
     }
 }
 
@@ -173,7 +188,7 @@ actor FakeEngine: KokoroSynthesizing {
             await engine.calls == [
                 .init(text: "Nobody really teaches you research.", voice: "af_bella", speed: 1.5)
             ])
-        #expect(playback.played.first?.volume == 0.5)
+        #expect(playback.volumes == [0.5])
         #expect(finished == 0)
         playback.finish()
         #expect(await until { held.asked == [.milliseconds(200)] })
@@ -236,11 +251,12 @@ actor FakeEngine: KokoroSynthesizing {
         p.speak("Two.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 1 })
         #expect(await engine.calls.count == 1)
-        // A different rate is a different sentence to the engine.
+        // A different rate is a different sentence to the engine. The prepare is cancelled
+        // before it reaches the engine, on the same turn, so it costs nothing.
         p.prepare("Three.", voice: bella, rate: .x1)
         p.speak("Three.", voice: bella, rate: .x2, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 2 })
-        #expect(await engine.calls.count == 3)
+        #expect(await engine.calls.count == 2)
         #expect(await engine.calls.last == .init(text: "Three.", voice: "af_bella", speed: 2))
     }
 
@@ -262,23 +278,23 @@ actor FakeEngine: KokoroSynthesizing {
     }
 
     /// The engine is one actor, so a prefetch started while the reader's own sentence is
-    /// being rendered puts that sentence behind it. The prefetch waits for the sentence
-    /// in the air and then runs, once.
-    @Test func aPrefetchWaitsForTheSentenceBeingSpoken() async throws {
+    /// being rendered would put that sentence behind it. The prefetch is chained after
+    /// the whole of the sentence in the air, then runs, once.
+    @Test func aPrefetchRendersAfterTheSentenceBeingSpoken() async throws {
         let (p, engine, playback, _, store) = try make()
         await store.start()
         p.warm()
         await p.warmTask?.value
-        await engine.hold()
-        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
-        #expect(await eventually { await engine.calls.count == 1 })
-        p.prepare("Two.", voice: bella, rate: .x1)
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(await engine.calls.count == 1)
-        await engine.release()
+        await engine.hold("two.")
+        p.speak(
+            "One, | two.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        p.prepare("Three.", voice: bella, rate: .x1)
         #expect(await until { playback.played.count == 1 })
-        #expect(await eventually { await engine.calls.count == 2 })
-        #expect(await engine.calls.map(\.text) == ["One.", "Two."])
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await engine.calls.map(\.text) == ["One,", "two."])
+        await engine.release()
+        #expect(await until { playback.played.count == 2 })
+        #expect(await eventually { await engine.calls.map(\.text) == ["One,", "two.", "Three."] })
     }
 
     /// A sentence that phonemizes to nothing finishes silently and on time, so a stray
@@ -310,7 +326,7 @@ actor FakeEngine: KokoroSynthesizing {
         p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 1 })
         #expect(p.setVolume(0.25))
-        #expect(playback.volumes == [0.25])
+        #expect(playback.volumes == [1, 0.25])
         #expect(await engine.calls.count == 1)
         #expect(playback.played.count == 1)
         // A change made while the next sentence is still rendering is heard on that
@@ -321,7 +337,7 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(p.setVolume(0.5))
         await engine.release()
         #expect(await until { playback.played.count == 2 })
-        #expect(playback.played.last?.volume == 0.5)
+        #expect(playback.volumes.last == 0.5)
     }
 
     /// A preview interrupts whatever is playing and speaks the preview sentence at 1x in
@@ -447,11 +463,11 @@ actor FakeEngine: KokoroSynthesizing {
         p.speak("One.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 1 })
         #expect(await engine.calls.last?.speed == 2)
-        #expect(playback.played.last?.rate == 1.5)
+        #expect(playback.rates.last == 1.5)
         p.speak("Two.", voice: bella, rate: .x15, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 2 })
         #expect(await engine.calls.last?.speed == 1.5)
-        #expect(playback.played.last?.rate == 1)
+        #expect(playback.rates.last == 1)
     }
 
     /// The prize of capping in the provider, driven the way `Player` drives it: speak
@@ -471,19 +487,21 @@ actor FakeEngine: KokoroSynthesizing {
 
         // `Player.rate`'s didSet asks the provider before it stops anything.
         #expect(p.setRate(.x3))
-        #expect(playback.rates == [1.5])
+        #expect(playback.rates == [1.25, 1.5])
 
         // The boundary: `Player.advance` speaks the sentence it handed over, at the rate
         // it now holds. Still a hit, because both rates ask the engine for 2.
         p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 2 })
         #expect(await engine.calls.count == 2)
-        #expect(playback.played.last?.rate == 1.5)
+        #expect(playback.rates.last == 1.5)
     }
 
-    /// Below the cap two rates are two renderings, so the provider says it cannot and the
-    /// player speaks the sentence again, which is the only way to hear a different speed.
-    @Test func aRateChangeAcrossTheCapIsRefused() async throws {
+    /// A speed change while a sentence is in the air is heard where the reader is: the
+    /// rest of the sentence is stretched by the new speed over the rendered one, and
+    /// nothing is stopped or rendered again. Before the first sentence there is nothing
+    /// to stretch, and the player speaks at the new speed when it starts.
+    @Test func aRateChangeMidSentenceStretchesTheRestOfIt() async throws {
         let (p, engine, playback, _, store) = try make()
         await store.start()
         p.warm()
@@ -491,9 +509,20 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(!p.setRate(.x3), "nothing is being spoken")
         p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 1 })
-        #expect(!p.setRate(.x3))
-        #expect(playback.rates.isEmpty)
+        #expect(p.setRate(.x15))
+        #expect(playback.rates.last == 1.5)
+        #expect(playback.stops == 0)
         #expect(await engine.calls.count == 1)
+        // Down as well as up, and past the cap: 3x over a sentence rendered at 1x.
+        #expect(p.setRate(.x05))
+        #expect(playback.rates.last == 0.5)
+        #expect(p.setRate(.x3))
+        #expect(playback.rates.last == 3)
+        // The next sentence is rendered at the speed the reader is at, with no stretch.
+        p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.last?.speed == 2)
+        #expect(playback.rates.last == 1.5)
     }
 
     /// The rate the provider was left at is the one the next sentence is rendered and
@@ -528,7 +557,7 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(p.setRate(.x3))
         await engine.release()
         #expect(await until { playback.played.count == 1 })
-        #expect(playback.played.last?.rate == 1.5)
+        #expect(playback.rates.last == 1.5)
     }
 
     /// The cap holds for every speed the picker offers, so no rate can ask the model for
@@ -580,5 +609,131 @@ actor FakeEngine: KokoroSynthesizing {
         await p.warmTask?.value
         #expect(await engine.loads.isEmpty)
         #expect(!p.isLoaded)
+    }
+
+    /// A sentence past the model's shape is heard from its first chunk: each chunk is
+    /// queued the moment it is rendered, with the seam beat after every one but the
+    /// last, and the sentence is finished only once the last queued buffer is heard.
+    @Test func aLongSentenceIsQueuedChunkByChunkWithASeamBetween() async throws {
+        let (p, engine, playback, held, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.hold("two,")
+        var finished = 0
+        p.speak(
+            "One, | two, | three.", voice: bella, rate: .x1, pause: .milliseconds(200), volume: 1,
+            onWord: { _ in }, onFinish: { finished += 1 })
+        #expect(await until { playback.played.count == 1 })
+        #expect(playback.played[0].count == 4 + KokoroVoiceProvider.seam.count)
+        #expect(playback.played[0].suffix(KokoroVoiceProvider.seam.count).allSatisfy { $0 == 0 })
+        await engine.release()
+        #expect(await until { playback.played.count == 3 })
+        #expect(playback.played[2].count == 6)
+        playback.finish()
+        playback.finish()
+        #expect(held.asked.isEmpty)
+        playback.finish()
+        #expect(await until { held.asked == [.milliseconds(200)] })
+        held.release()
+        await p.pauseTask?.value
+        #expect(finished == 1)
+    }
+
+    /// The seam is the length of a spoken comma.
+    @Test func theSeamIsOneHundredAndEightyMilliseconds() {
+        #expect(KokoroVoiceProvider.seamPause == .milliseconds(180))
+        #expect(KokoroVoiceProvider.seam.count == 4320)
+    }
+
+    /// A chunk that fails is that chunk alone: the rest of the sentence is heard and the
+    /// sentence finishes. A sentence whose every chunk fails finishes silently, so the
+    /// reading never stalls.
+    @Test func aFailedChunkIsSkippedAndTheSentenceStillFinishes() async throws {
+        let (p, engine, playback, held, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.setFailTexts(["two,"])
+        var finished = 0
+        p.speak(
+            "One, | two, | three.", voice: bella, rate: .x1, pause: .milliseconds(50), volume: 1,
+            onWord: { _ in }, onFinish: { finished += 1 })
+        #expect(await until { playback.played.count == 2 })
+        #expect(playback.played[1].count == 6)
+        playback.finish()
+        playback.finish()
+        #expect(await until { held.asked.count == 1 })
+        held.release()
+        await p.pauseTask?.value
+        #expect(finished == 1)
+        await engine.setFailTexts(["Four."])
+        p.speak(
+            "Four.", voice: bella, rate: .x1, pause: .milliseconds(50), volume: 1,
+            onWord: { _ in }, onFinish: { finished += 1 })
+        #expect(await until { held.asked.count == 2 })
+        held.release()
+        await p.pauseTask?.value
+        #expect(finished == 2)
+        #expect(playback.played.count == 2)
+    }
+
+    /// A speed change mid-sentence re-renders the sentence prepared ahead at the new
+    /// engine speed, so the boundary is still a hit. Within the capped band it is left
+    /// alone, since the engine speed is the same.
+    @Test func aRateChangeRebuildsThePreparedSentenceAtTheNewSpeed() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        p.prepare("Two.", voice: bella, rate: .x1)
+        #expect(await eventually { await engine.calls.count == 2 })
+        #expect(p.setRate(.x15))
+        #expect(await eventually { await engine.calls.count == 3 })
+        #expect(await engine.calls.last == .init(text: "Two.", voice: "af_bella", speed: 1.5))
+        p.speak("Two.", voice: bella, rate: .x15, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.count == 3)
+        #expect(playback.rates.last == 1)
+    }
+
+    /// The level and the stretch are set on the node before a sentence's first buffer,
+    /// and a level change while the sentence is still rendering reaches it.
+    @Test func theNodeIsSetBeforeTheFirstBuffer() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.hold()
+        p.speak("One.", voice: bella, rate: .x25, pause: .zero, volume: 0.4, onWord: { _ in }, onFinish: {})
+        #expect(await eventually { await engine.calls.count == 1 })
+        #expect(playback.volumes == [0.4])
+        #expect(playback.rates == [1.25])
+        #expect(p.setVolume(0.7))
+        await engine.release()
+        #expect(await until { playback.played.count == 1 })
+        #expect(playback.volumes == [0.4, 0.7])
+    }
+
+    /// Stop cancels the sentence in the air and the one rendered ahead, and a render
+    /// after the stop does not wait on either.
+    @Test func stopCancelsBothRenders() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.hold("two,")
+        p.speak(
+            "One, | two, | three.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in },
+            onFinish: {})
+        p.prepare("Four.", voice: bella, rate: .x1)
+        #expect(await until { playback.played.count == 1 })
+        p.stop()
+        await engine.release()
+        p.speak("Five.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.map(\.text) == ["One,", "two,", "Five."])
     }
 }
