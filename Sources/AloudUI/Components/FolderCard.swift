@@ -41,8 +41,9 @@ public struct FolderCard: View {
     }
 
     /// A folder's second line, the card's and the list row's alike: how many documents
-    /// are in it, counted in words that agree with the number.
-    public static func status(count: Int) -> String {
+    /// are in it, counted in words that agree with the number. Nonisolated: it is a
+    /// string from a number, and the suite asks it off the main actor.
+    nonisolated public static func status(count: Int) -> String {
         switch count {
         case 0: "Empty folder"
         case 1: "1 document"
