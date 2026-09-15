@@ -314,25 +314,42 @@ final class AppModel {
         installHotkey()
         Task { await refresh() }
         watch()
-        Task {
-            await kokoroStore?.start()
-            // The launch-time lookup in `init` runs before this sweep, when the Kokoro
-            // provider's list is still empty, so a saved Kokoro voice is restored here
-            // instead of being dropped there.
-            if let id = Defaults.voiceID, KokoroCatalogue.isKokoro(id),
-                let v = provider.voices.first(where: { $0.id == id })
-            {
-                player.voice = v
-            }
-            // The saved voice was a Kokoro one and the model is here: load it now, so
-            // Play does not wait.
-            if let v = player.voice, KokoroCatalogue.isKokoro(v.id) { kokoro?.warm() }
-        }
+        Task { await restoreKokoro() }
         Task { await restoreLast() }
         // The debounced write is the one thing that can still be in the air at quit.
         terminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [progress] _ in progress.flush() }
+    }
+
+    /// The Kokoro half of the launch: the store's sweep of the model folders, the saved
+    /// voice, and then either the models or the download that brings them back. Its own
+    /// method so the suite can drive it without a Now Playing centre and a hotkey.
+    func restoreKokoro() async {
+        await kokoroStore?.start()
+        // The launch-time lookup in `init` runs before this sweep, when the Kokoro
+        // provider's list is still empty, so a saved Kokoro voice is restored here
+        // instead of being dropped there.
+        if let id = Defaults.voiceID, KokoroCatalogue.isKokoro(id),
+            let v = provider.voices.first(where: { $0.id == id })
+        {
+            player.voice = v
+        }
+        // This build pins one bundle, so a model from an older version was swept at
+        // launch and the voice the reader chose has gone with it. They consented to this
+        // download when they picked that voice, and a version bump is the same consent,
+        // so it starts now with their voice as the pick waiting on it and comes back
+        // without a click. A reader whose voice was not a Kokoro one is asked nothing:
+        // the picker simply shows the download rows again.
+        if kokoroStore?.needsUpdate == true, let id = Defaults.voiceID,
+            let k = KokoroCatalogue.voice(for: id)
+        {
+            downloadKokoro(picking: k.voice)
+            return
+        }
+        // The saved voice was a Kokoro one and the model is here: load it now, so
+        // Play does not wait.
+        if let v = player.voice, KokoroCatalogue.isKokoro(v.id) { kokoro?.warm() }
     }
 
     deinit {

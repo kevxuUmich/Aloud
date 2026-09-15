@@ -51,6 +51,11 @@ public final class KokoroStore {
     }
     /// Called once an install completes, so a pick made before the download can take.
     public var onInstalled: (@MainActor () -> Void)?
+    /// True when this launch found a model from a version this build cannot load and
+    /// swept it. The reader had those voices until a moment ago, so this is not the same
+    /// as never having downloaded: the app model turns it into the download they already
+    /// consented to when they picked the voice.
+    public private(set) var needsUpdate = false
 
     public let paths: KokoroPaths
     public let release: KokoroReleaseInfo
@@ -109,17 +114,20 @@ public final class KokoroStore {
         let versions =
             (try? fm.contentsOfDirectory(at: paths.support, includingPropertiesForKeys: [.isDirectoryKey]))
             ?? []
-        // Last release's model is still a working voice, so it stays until the pinned one
-        // has landed. Only a folder with no marker, a crash mid-install, goes early.
+        // Nothing but the pinned version can ever be played: `installedRoot` names that
+        // one folder and the SDK is loaded from it, so a model left by an older build is
+        // dead weight the reader has no way to reclaim. It goes at the launch that finds
+        // it, and a marked one going while the pinned one is absent is what "an update is
+        // needed" means. A folder with no marker is a crash mid-install and says nothing.
         let pinnedIsInstalled = fm.fileExists(atPath: paths.marker(version: release.version).path)
         for folder in versions
         where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
             let version = folder.lastPathComponent
             let marked = fm.fileExists(atPath: paths.marker(version: version).path)
-            if !marked || (version != release.version && pinnedIsInstalled) {
-                try? fm.removeItem(at: folder)
-                try? fm.removeItem(at: paths.compiledCache(version: version))
-            }
+            if version == release.version && marked { continue }
+            if marked && !pinnedIsInstalled { needsUpdate = true }
+            try? fm.removeItem(at: folder)
+            try? fm.removeItem(at: paths.compiledCache(version: version))
         }
         if pinnedIsInstalled {
             state = .installed(
@@ -127,10 +135,16 @@ public final class KokoroStore {
             )
             return
         }
-        if await downloader.reattach(to: paths.archive, delegate: self) {
-            state = .downloading(0)
-            return
-        }
+        // Said before the await, not after it. Creating the session is what makes the
+        // system replay a download that finished while the app was quit, and that replay
+        // arrives inside `reattach`: a store still reading `.absent` would drop it on
+        // `downloadFinished`'s guard and fetch the 159 MB again.
+        state = .downloading(0)
+        if await downloader.reattach(to: paths.archive, delegate: self) { return }
+        // Nothing was running. Unless the replay above already took it somewhere, this
+        // launch is back where it started and the branches below are the real answer.
+        guard case .downloading = state else { return }
+        state = .absent
         if fm.fileExists(atPath: paths.resumeData.path) {
             download()
             return
@@ -147,6 +161,12 @@ public final class KokoroStore {
         if case .installing = state { return }
         let resume = try? Data(contentsOf: paths.resumeData)
         try? FileManager.default.createDirectory(at: paths.support, withIntermediateDirectories: true)
+        // Said before a byte is fetched. install() asks again, for a volume that filled
+        // up while the download was running.
+        guard Self.hasRoom(for: release, at: paths.support, availableBytes: availableBytes) else {
+            state = .failed(Self.diskFullMessage)
+            return
+        }
         try? FileManager.default.removeItem(at: paths.archive)
         state = .downloading(0)
         downloader.download(release.url, to: paths.archive, resumeData: resume, delegate: self)
@@ -187,9 +207,7 @@ public final class KokoroStore {
         installTask = Task.detached(priority: .userInitiated) {
             let outcome: Result<Int64, Error> = Result {
                 try Task.checkCancellation()
-                // The archive, the tree it unpacks to and the compiled cache, roughly.
-                // Said before the work rather than as a write failure halfway through it.
-                guard availableBytes(paths.support) >= 3 * release.bytes else {
+                guard Self.hasRoom(for: release, at: paths.support, availableBytes: availableBytes) else {
                     throw InstallError.diskFull
                 }
                 guard try Self.sha256(of: paths.archive) == release.sha256 else {
@@ -201,9 +219,14 @@ public final class KokoroStore {
                 // A remove during the extraction stops the install here, before anything
                 // is moved into place. The stale generation below swallows the error.
                 try Task.checkCancellation()
-                let destination = paths.modelDirectory(version: release.version)
+                var destination = paths.modelDirectory(version: release.version)
                 try? fm.removeItem(at: destination)
                 try fm.moveItem(at: paths.installing, to: destination)
+                // Several hundred megabytes reproducible from a pinned URL and a pinned
+                // hash. A backup should no more carry the tree than the cache below.
+                var tree = URLResourceValues()
+                tree.isExcludedFromBackup = true
+                try? destination.setResourceValues(tree)
                 try Data().write(to: paths.marker(version: release.version))
                 try fm.createDirectory(
                     at: paths.compiledCache(version: release.version), withIntermediateDirectories: true)
@@ -219,17 +242,22 @@ public final class KokoroStore {
         }
     }
 
-    private func finishInstall(_ outcome: Result<Int64, Error>, generation gen: Int) {
-        installTask = nil
+    /// Internal rather than private so the suite can hand the store a completion from an
+    /// install two removes ago without racing a real 159 MB extraction to do it.
+    func finishInstall(_ outcome: Result<Int64, Error>, generation gen: Int) {
         // An install that outran a remove: its outcome is discarded, and so is whatever
-        // it managed to put in place after the remove swept the folders.
+        // it managed to put in place after the remove swept the folders. Unless a newer
+        // install is already running, in which case the folders and the handle are that
+        // one's and this stale completion must touch neither.
         guard gen == generation else {
+            guard installTask == nil else { return }
             let fm = FileManager.default
             try? fm.removeItem(at: paths.modelDirectory(version: release.version))
             try? fm.removeItem(at: paths.compiledCache(version: release.version))
             try? fm.removeItem(at: paths.installing)
             return
         }
+        installTask = nil
         switch outcome {
         case .success(let bytes):
             state = .installed(version: release.version, bytes: bytes)
@@ -246,6 +274,14 @@ public final class KokoroStore {
     }
 
     enum InstallError: Error { case mismatch, diskFull }
+
+    /// The archive, the tree it unpacks to and the compiled cache, roughly. One place,
+    /// so the check before the download and the check before the extraction agree.
+    nonisolated static func hasRoom(
+        for release: KokoroReleaseInfo, at support: URL, availableBytes: (URL) -> Int64
+    ) -> Bool {
+        availableBytes(support) >= 3 * release.bytes
+    }
 
     static func message(for error: Error) -> String {
         if let install = error as? InstallError {
@@ -274,17 +310,23 @@ public final class KokoroStore {
     }
 
     /// The regular files under a folder, in bytes: what Settings shows beside Remove.
+    ///
+    /// A file reached by more than one name counts once. The bundle's four acoustic
+    /// buckets share one copy of each weight file, so counting every link would say
+    /// "558 MB" for a tree that takes 169 MB of disk, beside a badge that says 159 MB.
     nonisolated static func size(of folder: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .isRegularFileKey, .fileIdentifierKey]
         guard
-            let e = FileManager.default.enumerator(
-                at: folder, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey])
+            let e = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: Array(keys))
         else {
             return 0
         }
         var total: Int64 = 0
+        var counted: Set<UInt64> = []
         for case let url as URL in e {
-            let v = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-            if v?.isRegularFile == true { total += Int64(v?.fileSize ?? 0) }
+            guard let v = try? url.resourceValues(forKeys: keys), v.isRegularFile == true else { continue }
+            if let identifier = v.fileIdentifier, !counted.insert(identifier).inserted { continue }
+            total += Int64(v.fileSize ?? 0)
         }
         return total
     }

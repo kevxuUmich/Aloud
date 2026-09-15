@@ -14,6 +14,9 @@ import Testing
     var running = false
     weak var delegate: (any KokoroDownloadDelegate)?
     var destination: URL?
+    /// A finished download the real session replays the moment it is created, which is
+    /// inside `reattach` and before it returns.
+    var replayFinish: Data?
 
     nonisolated init() {}
     func download(_ url: URL, to destination: URL, resumeData: Data?, delegate: any KokoroDownloadDelegate) {
@@ -22,10 +25,17 @@ import Testing
         self.destination = destination
     }
     func reattach(to destination: URL, delegate: any KokoroDownloadDelegate) async -> Bool {
-        guard running else { return false }
+        // Recorded before anything is replayed, as the real downloader records them
+        // before it creates the session that does the replaying.
         self.delegate = delegate
         self.destination = destination
-        return true
+        if let replayFinish {
+            self.replayFinish = nil
+            try? replayFinish.write(to: destination)
+            delegate.downloadFinished()
+            return false
+        }
+        return running
     }
     func cancel() { cancels += 1 }
 
@@ -36,6 +46,21 @@ import Testing
     }
     func fail(_ failure: KokoroDownloadFailure, resumeData: Data? = nil) {
         delegate?.downloadFailed(failure, resumeData: resumeData)
+    }
+}
+
+/// What a volume answers, in order, so a test can be roomy at the download and full at
+/// the install. The last answer repeats.
+final class SpaceMeter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [Int64]
+    init(_ answers: [Int64]) { self.answers = answers }
+    func next() -> Int64 {
+        lock.withLock {
+            let value = answers[0]
+            if answers.count > 1 { answers.removeFirst() }
+            return value
+        }
     }
 }
 
@@ -121,6 +146,13 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: paths.archive.path))
         #expect(!FileManager.default.fileExists(atPath: paths.installing.path))
         #expect(FileManager.default.fileExists(atPath: paths.compiledCache(version: "1").path))
+        // Several hundred megabytes reproducible from a pinned URL and a pinned hash:
+        // a backup carries neither the tree nor the compiled cache.
+        for folder in [paths.modelDirectory(version: "1"), paths.compiledCache(version: "1")] {
+            let excluded = try folder.resourceValues(forKeys: [.isExcludedFromBackupKey])
+                .isExcludedFromBackup
+            #expect(excluded == true, "\(folder.lastPathComponent)")
+        }
     }
 
     /// A file that does not hash to the pinned value is deleted and reported; nothing
@@ -150,10 +182,10 @@ import Testing
         #expect(downloader.requests.last?.resumeData == nil)
     }
 
-    /// The disk is measured before the checksum and the extraction, so a full disk is a
-    /// sentence rather than a write failure halfway through unpacking.
-    @Test func notEnoughDiskSpaceIsSaidBeforeExtracting() async throws {
-        let (data, release) = try makeArchive()
+    /// The disk is measured before a byte is fetched, so a reader with 300 MB free is
+    /// told now rather than after 159 MB has arrived and been thrown away.
+    @Test func notEnoughDiskSpaceIsSaidBeforeDownloading() async throws {
+        let (_, release) = try makeArchive()
         let root = try scratch()
         let paths = KokoroPaths(
             support: root.appendingPathComponent("support"), caches: root.appendingPathComponent("caches"))
@@ -162,6 +194,25 @@ import Testing
             paths: paths, release: release, downloader: downloader, availableBytes: { _ in 1 })
         await store.start()
         store.download()
+        #expect(store.state == .failed("Not enough disk space."))
+        #expect(downloader.requests.isEmpty)
+        #expect(!store.isInstalledNow)
+    }
+
+    /// And again before the checksum and the extraction, which is the backstop for a
+    /// volume that filled up while the download was running.
+    @Test func notEnoughDiskSpaceIsSaidBeforeExtracting() async throws {
+        let (data, release) = try makeArchive()
+        let root = try scratch()
+        let paths = KokoroPaths(
+            support: root.appendingPathComponent("support"), caches: root.appendingPathComponent("caches"))
+        let downloader = FakeDownloader()
+        let meter = SpaceMeter([.max, 1])
+        let store = KokoroStore(
+            paths: paths, release: release, downloader: downloader, availableBytes: { _ in meter.next() })
+        await store.start()
+        store.download()
+        #expect(store.state == .downloading(0))
         try downloader.finish(with: data)
         await install(store)
         #expect(store.state == .failed("Not enough disk space."))
@@ -300,27 +351,42 @@ import Testing
         #expect(!fm.fileExists(atPath: paths.installing.path))
     }
 
-    /// Last release's model is a working voice until its replacement has landed, so the
-    /// sweep leaves a marked older version alone and takes it only once the pinned
-    /// version is installed. It is never served in the meantime, just not deleted early.
-    @Test func anOlderVersionStaysUntilTheNewOneIsInstalled() async throws {
-        let (data, release) = try makeArchive()
-        let (store, downloader, paths) = try make(release: release)
+    /// A model from an older version is dead weight: this build pins one bundle and
+    /// `installedRoot` only ever names the pinned one, so an older folder can never be
+    /// played and would sit there unreclaimable. It goes at the launch that finds it,
+    /// and the launch says an update is needed so the reader's voice can be fetched back.
+    @Test func anOlderVersionIsSweptAndAnUpdateIsReported() async throws {
+        let (_, release) = try makeArchive()
+        let (store, _, paths) = try make(release: release)
         let fm = FileManager.default
         try fm.createDirectory(at: paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: paths.compiledCache(version: "0"), withIntermediateDirectories: true)
         try Data().write(to: paths.marker(version: "0"))
 
         await store.start()
         #expect(store.state == .absent)
-        #expect(fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
+        #expect(store.needsUpdate)
+        #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
+        #expect(!fm.fileExists(atPath: paths.compiledCache(version: "0").path))
+    }
 
+    /// The pinned version being installed is not an update: the older folder is swept
+    /// as before and nothing is asked of the reader.
+    @Test func anOlderVersionBesideThePinnedOneIsJustSwept() async throws {
+        let (data, release) = try makeArchive()
+        let (store, downloader, paths) = try make(release: release)
+        let fm = FileManager.default
+        await store.start()
         store.download()
         try downloader.finish(with: data)
         await install(store)
+        try fm.createDirectory(at: paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+        try Data().write(to: paths.marker(version: "0"))
 
         let again = KokoroStore(paths: paths, release: release, downloader: FakeDownloader())
         await again.start()
         #expect(again.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(!again.needsUpdate)
         #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
     }
 
@@ -372,6 +438,51 @@ import Testing
         #expect(downloader.requests.isEmpty)
         downloader.progress(0.7)
         #expect(again.state == .downloading(0.7))
+    }
+
+    /// A background download that finished while the app was quit is replayed by the
+    /// session the moment it is created, which happens inside `reattach` and before it
+    /// returns. The store is already in the downloading state by then, so the finish is
+    /// taken rather than swallowed by the guard and the 159 MB fetched again.
+    @Test func aFinishReplayedInsideReattachIsNotDropped() async throws {
+        let (data, release) = try makeArchive()
+        let (_, _, paths) = try make(release: release)
+        let downloader = FakeDownloader()
+        downloader.replayFinish = data
+        let store = KokoroStore(paths: paths, release: release, downloader: downloader)
+        await store.start()
+        await install(store)
+        #expect(store.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(store.isInstalledNow)
+    }
+
+    /// An install whose remove was followed by a fresh download must not sweep the
+    /// folders of the install that replaced it, nor drop its handle.
+    @Test func aStaleInstallLeavesANewerOneAlone() async throws {
+        let (data, release) = try makeArchive()
+        let (store, downloader, paths) = try make(release: release)
+        await store.start()
+        store.download()
+        try downloader.finish(with: data)
+        let running = try #require(store.installTask)
+        // The completion of an install two removes ago, arriving now.
+        store.finishInstall(.failure(KokoroStore.InstallError.mismatch), generation: -1)
+        #expect(store.installTask != nil)
+        #expect(store.installTask == running)
+        await install(store)
+        #expect(store.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(FileManager.default.fileExists(atPath: paths.marker(version: "1").path))
+    }
+
+    /// The four acoustic buckets share one copy of each weight file on disk, so a size
+    /// that counted every link would tell the reader the model is three times what it is.
+    @Test func sizeCountsAFileReachedByTwoNamesOnce() throws {
+        let dir = try scratch()
+        let first = dir.appendingPathComponent("a.bin")
+        try Data(count: 1000).write(to: first)
+        try FileManager.default.linkItem(at: first, to: dir.appendingPathComponent("b.bin"))
+        try Data(count: 50).write(to: dir.appendingPathComponent("c.bin"))
+        #expect(KokoroStore.size(of: dir) == 1050)
     }
 
     /// Resume data from an app that quit mid-download is resumed at the next launch.

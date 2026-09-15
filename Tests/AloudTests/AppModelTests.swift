@@ -683,11 +683,16 @@ import Vault
         let apple = FakeVoiceProvider()
         let composite = CompositeVoiceProvider(
             primary: apple, secondary: kokoro, secondaryPrefix: KokoroCatalogue.prefix)
-        let model = AppModel(
-            provider: composite, kokoro: kokoro,
-            progress: ProgressStore(file: dir.appendingPathComponent("progress.json")),
-            rootStore: RootStore(defaults: suite), notesFolder: dir, emptyPanelHold: .seconds(1))
-        try await body(model, kokoro, store, downloader, apple, engine)
+        // The settings this model reads and writes are the case's own, not the test
+        // binary's process-wide domain: `pickVoice` writes `voiceID`, and the launch
+        // restore reads it back, so two cases sharing one store would read each other's.
+        try await Defaults.$overrideStore.withValue(.init(suite)) {
+            let model = AppModel(
+                provider: composite, kokoro: kokoro,
+                progress: ProgressStore(file: dir.appendingPathComponent("progress.json")),
+                rootStore: RootStore(defaults: suite), notesFolder: dir, emptyPanelHold: .seconds(1))
+            try await body(model, kokoro, store, downloader, apple, engine)
+        }
     }
 
     /// Writes the marker a real install would leave, so the store's next `start()` finds
@@ -697,6 +702,44 @@ import Vault
             at: store.paths.modelDirectory(version: KokoroRelease.current.version),
             withIntermediateDirectories: true)
         try Data().write(to: store.paths.marker(version: KokoroRelease.current.version))
+    }
+
+    /// A reader who had the voices and whose model this build cannot load is not asked to
+    /// go and find the picker again: the launch sweeps the old version, and the download
+    /// they already consented to starts with their voice waiting on it.
+    @Test func aVersionBumpFetchesTheSavedVoiceBack() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: store.paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+            try Data().write(to: store.paths.marker(version: "0"))
+            model.pickVoice(KokoroCatalogue.voices[6].voice)
+
+            await model.restoreKokoro()
+
+            #expect(store.needsUpdate)
+            #expect(store.state == .downloading(0))
+            #expect(downloader.requests.count == 1)
+            #expect(model.pendingKokoroPick?.id == "kokoro.bm_fable")
+        }
+    }
+
+    /// A reader whose voice was not a Kokoro one is asked nothing: the picker shows the
+    /// download rows and nothing is fetched behind their back.
+    @Test func aVersionBumpWithNoKokoroVoiceSavedFetchesNothing() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: store.paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+            try Data().write(to: store.paths.marker(version: "0"))
+
+            await model.restoreKokoro()
+
+            #expect(store.needsUpdate)
+            #expect(store.state == .absent)
+            #expect(downloader.requests.isEmpty)
+            #expect(model.pendingKokoroPick == nil)
+        }
     }
 
     /// Picking a Kokoro voice loads the models; picking an Apple voice again gives the

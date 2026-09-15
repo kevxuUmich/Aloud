@@ -16,6 +16,9 @@ import Speech
     var running = false
     weak var delegate: (any KokoroDownloadDelegate)?
     var destination: URL?
+    /// A finished download the real session replays the moment it is created, which is
+    /// inside `reattach` and before it returns.
+    var replayFinish: Data?
 
     nonisolated init() {}
     func download(_ url: URL, to destination: URL, resumeData: Data?, delegate: any KokoroDownloadDelegate) {
@@ -24,10 +27,17 @@ import Speech
         self.destination = destination
     }
     func reattach(to destination: URL, delegate: any KokoroDownloadDelegate) async -> Bool {
-        guard running else { return false }
+        // Recorded before anything is replayed, as the real downloader records them
+        // before it creates the session that does the replaying.
         self.delegate = delegate
         self.destination = destination
-        return true
+        if let replayFinish {
+            self.replayFinish = nil
+            try? replayFinish.write(to: destination)
+            delegate.downloadFinished()
+            return false
+        }
+        return running
     }
     func cancel() { cancels += 1 }
 
