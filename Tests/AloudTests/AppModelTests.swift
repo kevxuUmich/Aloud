@@ -877,6 +877,44 @@ import Vault
         }
     }
 
+    /// The prize the speed cap buys, driven through the stack the app actually assembles
+    /// rather than straight at the provider: `setRate` goes through `Player`, through the
+    /// composite, to the Kokoro provider, and a change among the speeds at or above the
+    /// cap asks the engine for nothing, because the samples in hand are already the ones
+    /// those speeds are played from. A change across the cap does need new audio and says
+    /// so, and then the sentence is spoken again as it always was.
+    @Test func aSpeedChangeAboveTheCapCostsTheEngineNothing() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.setRate(.x25)
+            model.player.play()
+            // The sentence being read, and then the one handed over for the boundary.
+            try await poll { await engine.calls.count == 2 }
+
+            model.setRate(.x3)
+
+            // `Player.stopSpeaking` is what a refused change runs, and it reaches both
+            // engines through the composite, so the system voice's stop count is the
+            // synchronous witness that nothing was torn down here.
+            #expect(apple.stops == 0)
+            #expect(await engine.calls.count == 2)
+            #expect(model.player.rate == .x3)
+            #expect(model.player.isPlaying)
+
+            // Across the cap the engine has no rendering to play at the new speed, so it
+            // says so and the sentence is spoken again, as it always was.
+            model.setRate(.x1)
+            #expect(apple.stops == 1)
+            try await poll { await engine.calls.count > 2 }
+            #expect(await engine.calls.last?.speed == 1)
+        }
+    }
+
     /// Switching from a Kokoro voice to an Apple one mid-sentence: the sentence in the
     /// air is dropped by the unload and never reports itself finished, so the player
     /// would sit playing in silence. It is spoken again in the voice now picked.
