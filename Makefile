@@ -40,10 +40,22 @@ kokoro-bundle:
 # Attaches the archive to the kokoro-models release on the Aloud repo, creating the
 # release the first time. The release is its own tag so the model does not churn with
 # app releases. Needs `gh` logged in with push rights.
+#
+# --clobber can replace the artefact the app pins by hash, so before uploading this
+# checks whether a differently-checksummed archive is already published under this
+# version and refuses rather than silently replacing what apps in the wild trust.
 kokoro-release: kokoro-bundle
 	gh release view kokoro-models >/dev/null 2>&1 || gh release create kokoro-models \
 		--title "Kokoro models" \
 		--notes "The Kokoro voice models Aloud downloads on first use. Built by make kokoro-bundle from pinned Hugging Face inputs; the .sha256 sidecar is what the app checks."
+	published="$$(mktemp)"; \
+	if curl -sfL "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-$(KOKORO_VERSION).aar.sha256" -o "$$published" \
+		&& [ "$$(awk '{print $$1}' "$$published")" != "$$(awk '{print $$1}' "$(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256")" ]; then \
+		rm -f "$$published"; \
+		echo "kokoro-$(KOKORO_VERSION).aar is already published with a different checksum; bump KOKORO_VERSION"; \
+		exit 1; \
+	fi; \
+	rm -f "$$published"
 	gh release upload kokoro-models $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256 --clobber
 
 # The command-line-tools-only toolchain ships Testing.framework outside the

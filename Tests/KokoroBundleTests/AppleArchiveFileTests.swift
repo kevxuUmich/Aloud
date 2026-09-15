@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Testing
 
@@ -72,5 +71,13 @@ import Testing
         try Data("not an archive".utf8).write(to: notArchive)
         let dst = try scratch().appendingPathComponent("out")
         #expect(throws: (any Error).self) { try AppleArchiveFile.extract(archive: notArchive, into: dst) }
+    }
+
+    @Test func compressIntoAMissingFolderIsRefused() throws {
+        let src = try scratch()
+        try makeTree(in: src, stamp: Date())
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("nested").appendingPathComponent("t.aar")
+        #expect(throws: ArchiveError.self) { try AppleArchiveFile.compress(directory: src, to: missing) }
     }
 }
