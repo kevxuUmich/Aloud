@@ -19,60 +19,64 @@ public final class URLSessionKokoroDownloader: NSObject, KokoroDownloading, URLS
     }
 
     private func makeSession() -> URLSession {
-        lock.lock()
-        defer { lock.unlock() }
-        if let session { return session }
-        let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
-        configuration.isDiscretionary = false
-        configuration.sessionSendsLaunchEvents = false
-        let s = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        session = s
-        return s
+        lock.withLock {
+            if let session { return session }
+            let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+            configuration.isDiscretionary = false
+            configuration.sessionSendsLaunchEvents = false
+            let s = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+            session = s
+            return s
+        }
     }
 
     public func download(
         _ url: URL, to destination: URL, resumeData: Data?, delegate: any KokoroDownloadDelegate
     ) {
+        // Recorded before the session exists: creating it wires up `self` as the session's
+        // delegate, and a background session can replay a finished download's callback the
+        // moment that happens.
+        lock.withLock {
+            self.destination = destination
+            self.delegate = delegate
+        }
         let session = makeSession()
-        lock.lock()
-        self.destination = destination
-        self.delegate = delegate
         let t = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: url)
-        task = t
-        lock.unlock()
+        lock.withLock { task = t }
         t.resume()
     }
 
     public func reattach(to destination: URL, delegate: any KokoroDownloadDelegate) async -> Bool {
+        // Recorded before the session exists, for the same reason as in `download`.
+        lock.withLock {
+            self.destination = destination
+            self.delegate = delegate
+        }
         let session = makeSession()
         let tasks = await session.allTasks
         guard
             let running = tasks.compactMap({ $0 as? URLSessionDownloadTask }).first(where: {
-                $0.state == .running
+                $0.state == .running || $0.state == .suspended
             })
         else {
             return false
         }
-        lock.withLock {
-            self.destination = destination
-            self.delegate = delegate
-            task = running
-        }
+        lock.withLock { task = running }
+        if running.state == .suspended { running.resume() }
         return true
     }
 
     public func cancel() {
-        lock.lock()
-        let t = task
-        task = nil
-        lock.unlock()
+        let t = lock.withLock {
+            let t = task
+            task = nil
+            return t
+        }
         t?.cancel()
     }
 
     private func current() -> (URL?, (any KokoroDownloadDelegate)?) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (destination, delegate)
+        lock.withLock { (destination, delegate) }
     }
 
     public func urlSession(
@@ -92,7 +96,8 @@ public final class URLSessionKokoroDownloader: NSObject, KokoroDownloading, URLS
         guard let destination else { return }
         // The temporary file is gone once this returns, so the move happens here.
         let moved: Result<Void, Error> = Result {
-            if let http = downloadTask.response as? HTTPURLResponse, http.statusCode != 200 {
+            if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                try? FileManager.default.removeItem(at: location)
                 throw URLError(.badServerResponse, userInfo: ["status": http.statusCode])
             }
             try? FileManager.default.removeItem(at: destination)
@@ -130,7 +135,7 @@ public final class URLSessionKokoroDownloader: NSObject, KokoroDownloading, URLS
         {
             return .offline
         }
-        if let http = task.response as? HTTPURLResponse, http.statusCode != 200 {
+        if let http = task.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             return .http(http.statusCode)
         }
         if let status = ns.userInfo["status"] as? Int { return .http(status) }
