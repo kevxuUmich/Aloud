@@ -124,17 +124,47 @@ import Testing
     }
 
     /// A file that does not hash to the pinned value is deleted and reported; nothing
-    /// is extracted.
+    /// is extracted, and the resume data that fetched it goes too, so Retry starts over
+    /// instead of resuming the same bad bytes for ever.
     @Test func aMismatchedDownloadIsDeletedAndFails() async throws {
         let (data, release) = try makeArchive()
         let (store, downloader, paths) = try make(release: release)
         await store.start()
         store.download()
+        // A dropped connection first, so there is resume data for the retry to reuse.
+        downloader.fail(.offline, resumeData: Data("partial".utf8))
+        store.download()
+        #expect(downloader.requests.last?.resumeData == Data("partial".utf8))
+
         var wrong = data
         wrong[wrong.count - 1] ^= 0xFF
         try downloader.finish(with: wrong)
         await install(store)
         #expect(store.state == .failed("The download did not match what Aloud expected."))
+        #expect(!FileManager.default.fileExists(atPath: paths.archive.path))
+        #expect(!FileManager.default.fileExists(atPath: paths.modelDirectory(version: "1").path))
+        #expect(!store.isInstalledNow)
+
+        #expect(!FileManager.default.fileExists(atPath: paths.resumeData.path))
+        store.download()
+        #expect(downloader.requests.last?.resumeData == nil)
+    }
+
+    /// The disk is measured before the checksum and the extraction, so a full disk is a
+    /// sentence rather than a write failure halfway through unpacking.
+    @Test func notEnoughDiskSpaceIsSaidBeforeExtracting() async throws {
+        let (data, release) = try makeArchive()
+        let root = try scratch()
+        let paths = KokoroPaths(
+            support: root.appendingPathComponent("support"), caches: root.appendingPathComponent("caches"))
+        let downloader = FakeDownloader()
+        let store = KokoroStore(
+            paths: paths, release: release, downloader: downloader, availableBytes: { _ in 1 })
+        await store.start()
+        store.download()
+        try downloader.finish(with: data)
+        await install(store)
+        #expect(store.state == .failed("Not enough disk space."))
         #expect(!FileManager.default.fileExists(atPath: paths.archive.path))
         #expect(!FileManager.default.fileExists(atPath: paths.modelDirectory(version: "1").path))
         #expect(!store.isInstalledNow)
@@ -214,6 +244,21 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: paths.installing.path))
     }
 
+    /// Remove during a download stops the download rather than leaving it running
+    /// against a model the reader has just said they do not want.
+    @Test func removeDuringDownloadCancelsIt() async throws {
+        let (store, downloader, paths) = try make(release: try makeArchive().release)
+        await store.start()
+        store.download()
+        downloader.progress(0.5)
+        store.remove()
+        #expect(downloader.cancels == 1)
+        #expect(store.state == .absent)
+        #expect(!store.isInstalledNow)
+        #expect(!FileManager.default.fileExists(atPath: paths.resumeData.path))
+        #expect(!FileManager.default.fileExists(atPath: paths.archive.path))
+    }
+
     /// The next launch finds what the last one installed.
     @Test func startFindsAnInstalledVersion() async throws {
         let (data, release) = try makeArchive()
@@ -228,8 +273,9 @@ import Testing
         #expect(again.isInstalledNow)
     }
 
-    /// A folder without the marker is a crash mid-install; an older version folder is
-    /// last release's; a leftover extraction folder is either. All three are swept.
+    /// Three leftovers with no marker between them: the pinned version's folder with its
+    /// marker taken away, an unmarked older folder with its cache, and a leftover
+    /// extraction folder. None of them is a model anyone can play, so all three are swept.
     @Test func startSweepsWhatShouldNotBeThere() async throws {
         let (data, release) = try makeArchive()
         let (store, downloader, paths) = try make(release: release)
@@ -252,6 +298,66 @@ import Testing
         #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
         #expect(!fm.fileExists(atPath: paths.compiledCache(version: "0").path))
         #expect(!fm.fileExists(atPath: paths.installing.path))
+    }
+
+    /// Last release's model is a working voice until its replacement has landed, so the
+    /// sweep leaves a marked older version alone and takes it only once the pinned
+    /// version is installed. It is never served in the meantime, just not deleted early.
+    @Test func anOlderVersionStaysUntilTheNewOneIsInstalled() async throws {
+        let (data, release) = try makeArchive()
+        let (store, downloader, paths) = try make(release: release)
+        let fm = FileManager.default
+        try fm.createDirectory(at: paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+        try Data().write(to: paths.marker(version: "0"))
+
+        await store.start()
+        #expect(store.state == .absent)
+        #expect(fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
+
+        store.download()
+        try downloader.finish(with: data)
+        await install(store)
+
+        let again = KokoroStore(paths: paths, release: release, downloader: FakeDownloader())
+        await again.start()
+        #expect(again.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
+    }
+
+    /// A crash between the download finishing and the marker leaves the archive behind.
+    /// The next launch finishes that install rather than fetching 159 MB again.
+    @Test func startInstallsAnArchiveLeftByACrash() async throws {
+        let (data, release) = try makeArchive()
+        let (store, _, paths) = try make(release: release)
+        let fm = FileManager.default
+        try fm.createDirectory(at: paths.support, withIntermediateDirectories: true)
+        try data.write(to: paths.archive)
+
+        await store.start()
+        await install(store)
+        #expect(store.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(store.isInstalledNow)
+        #expect(fm.fileExists(atPath: paths.marker(version: "1").path))
+        #expect(!fm.fileExists(atPath: paths.archive.path))
+    }
+
+    /// The leftover is checked before it is trusted, so a half-written one is reported
+    /// and deleted rather than unpacked.
+    @Test func startDeletesAnArchiveThatDoesNotMatch() async throws {
+        let (data, release) = try makeArchive()
+        let (store, _, paths) = try make(release: release)
+        let fm = FileManager.default
+        try fm.createDirectory(at: paths.support, withIntermediateDirectories: true)
+        var wrong = data
+        wrong[wrong.count - 1] ^= 0xFF
+        try wrong.write(to: paths.archive)
+
+        await store.start()
+        await install(store)
+        #expect(store.state == .failed(KokoroStore.mismatchMessage))
+        #expect(!store.isInstalledNow)
+        #expect(!fm.fileExists(atPath: paths.archive.path))
+        #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "1").path))
     }
 
     /// A download the last launch left running is picked up, not restarted.

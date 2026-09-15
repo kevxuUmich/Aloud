@@ -42,6 +42,7 @@ public final class KokoroStore {
     public static let mismatchMessage = "The download did not match what Aloud expected."
     public static let offlineMessage = "No internet connection."
     public static let diskFullMessage = "Not enough disk space."
+    public static let unpackMessage = "The model could not be unpacked."
 
     public private(set) var state: KokoroStoreState = .absent {
         didSet {
@@ -55,6 +56,9 @@ public final class KokoroStore {
     public let release: KokoroReleaseInfo
     private let downloader: any KokoroDownloading
     private let extract: @Sendable (URL, URL) throws -> Void
+    /// What the volume has left for something the reader asked for. Injected so a test
+    /// can say "full" without filling a disk.
+    private let availableBytes: @Sendable (URL) -> Int64
     /// The provider's `voices` is read nonisolated, so it reads this rather than `state`.
     private let installedFlag = Mutex(false)
     /// Bumped on cancel and remove, so a callback from a download that is no longer
@@ -65,12 +69,25 @@ public final class KokoroStore {
 
     public init(
         paths: KokoroPaths, release: KokoroReleaseInfo, downloader: any KokoroDownloading,
-        extract: @escaping @Sendable (URL, URL) throws -> Void = AppleArchiveFile.extract
+        extract: @escaping @Sendable (URL, URL) throws -> Void = AppleArchiveFile.extract,
+        availableBytes: @escaping @Sendable (URL) -> Int64 = KokoroStore.volumeAvailableBytes
     ) {
         self.paths = paths
         self.release = release
         self.downloader = downloader
         self.extract = extract
+        self.availableBytes = availableBytes
+    }
+
+    /// What the volume holding `url` would give up for a download the reader asked for.
+    /// A volume that will not say is treated as roomy rather than blocking the install.
+    public static let volumeAvailableBytes: @Sendable (URL) -> Int64 = { url in
+        let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey]
+        guard
+            let capacity = (try? url.resourceValues(forKeys: keys))?
+                .volumeAvailableCapacityForImportantUsage
+        else { return .max }
+        return capacity
     }
 
     public nonisolated var isInstalledNow: Bool { installedFlag.withLock { $0 } }
@@ -92,16 +109,19 @@ public final class KokoroStore {
         let versions =
             (try? fm.contentsOfDirectory(at: paths.support, includingPropertiesForKeys: [.isDirectoryKey]))
             ?? []
+        // Last release's model is still a working voice, so it stays until the pinned one
+        // has landed. Only a folder with no marker, a crash mid-install, goes early.
+        let pinnedIsInstalled = fm.fileExists(atPath: paths.marker(version: release.version).path)
         for folder in versions
         where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
             let version = folder.lastPathComponent
             let marked = fm.fileExists(atPath: paths.marker(version: version).path)
-            if version != release.version || !marked {
+            if !marked || (version != release.version && pinnedIsInstalled) {
                 try? fm.removeItem(at: folder)
                 try? fm.removeItem(at: paths.compiledCache(version: version))
             }
         }
-        if fm.fileExists(atPath: paths.marker(version: release.version).path) {
+        if pinnedIsInstalled {
             state = .installed(
                 version: release.version, bytes: Self.size(of: paths.modelDirectory(version: release.version))
             )
@@ -111,7 +131,14 @@ public final class KokoroStore {
             state = .downloading(0)
             return
         }
-        if fm.fileExists(atPath: paths.resumeData.path) { download() }
+        if fm.fileExists(atPath: paths.resumeData.path) {
+            download()
+            return
+        }
+        // A crash between the download finishing and the marker: the bytes are still
+        // here, and install() checks them before trusting them, so a corrupt leftover
+        // fails into .failed and is deleted rather than being served.
+        if fm.fileExists(atPath: paths.archive.path) { install() }
     }
 
     public func download() {
@@ -137,6 +164,12 @@ public final class KokoroStore {
     public func remove() {
         generation += 1
         installTask?.cancel()
+        // A remove during a download is still a remove: the transfer stops and its bytes go.
+        if case .downloading = state {
+            downloader.cancel()
+            try? FileManager.default.removeItem(at: paths.resumeData)
+            try? FileManager.default.removeItem(at: paths.archive)
+        }
         try? FileManager.default.removeItem(at: paths.modelDirectory(version: release.version))
         try? FileManager.default.removeItem(at: paths.compiledCache(version: release.version))
         state = .absent
@@ -150,8 +183,15 @@ public final class KokoroStore {
         let paths = paths
         let release = release
         let extract = extract
+        let availableBytes = availableBytes
         installTask = Task.detached(priority: .userInitiated) {
             let outcome: Result<Int64, Error> = Result {
+                try Task.checkCancellation()
+                // The archive, the tree it unpacks to and the compiled cache, roughly.
+                // Said before the work rather than as a write failure halfway through it.
+                guard availableBytes(paths.support) >= 3 * release.bytes else {
+                    throw InstallError.diskFull
+                }
                 guard try Self.sha256(of: paths.archive) == release.sha256 else {
                     throw InstallError.mismatch
                 }
@@ -196,16 +236,25 @@ public final class KokoroStore {
             onInstalled?()
         case .failure(let error):
             try? FileManager.default.removeItem(at: paths.archive)
+            // Resume data points at bytes that did not check out, so a retry starts over
+            // rather than resuming the same bad download.
+            try? FileManager.default.removeItem(at: paths.resumeData)
             try? FileManager.default.removeItem(at: paths.installing)
             try? FileManager.default.removeItem(at: paths.modelDirectory(version: release.version))
             state = .failed(Self.message(for: error))
         }
     }
 
-    enum InstallError: Error { case mismatch }
+    enum InstallError: Error { case mismatch, diskFull }
 
     static func message(for error: Error) -> String {
-        if error is InstallError { return mismatchMessage }
+        if let install = error as? InstallError {
+            switch install {
+            case .mismatch: return mismatchMessage
+            case .diskFull: return diskFullMessage
+            }
+        }
+        if error is ArchiveError { return unpackMessage }
         let ns = error as NSError
         if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError { return diskFullMessage }
         if ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC) { return diskFullMessage }
