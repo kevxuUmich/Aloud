@@ -54,10 +54,13 @@ public enum Scanner {
         return Document(
             url: url,
             title: Title.from(text: head, fallback: url.deletingPathExtension().lastPathComponent),
-            preview: FrontMatter.strip(head), modified: modified, bytes: bytes, type: type)
+            preview: FrontMatter.strip(head), modified: modified, bytes: bytes, type: type,
+            origin: Origin(frontMatterOf: head))
     }
 
-    static func headText(of url: URL) -> String {
+    /// The file's first few hundred bytes, which is where its title, its preview and
+    /// its front matter all are.
+    public static func headText(of url: URL) -> String {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
         defer { try? handle.close() }
         let data = (try? handle.read(upToCount: previewBytes * 4)) ?? Data()

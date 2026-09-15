@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="App/Icon/Aloud-1024.png" width="128" alt="Aloud">
+  <img src="docs/banner.jpg" alt="Aloud">
 </p>
 
 <h1 align="center">Aloud</h1>
@@ -17,19 +17,56 @@ A Mac already ships with good voices, so Aloud is the small piece that hands the
 
 ## How it works
 
-Point Aloud at folders you already have.
-It reads `.md`, `.txt`, and `.pdf` in place and never copies or uploads them, so an Obsidian vault works as it stands.
+Aloud has two ways in: the folders you already keep, and the text in front of you.
 
-Or select a paragraph in any app and press Option+Space.
-A small card appears under the menu bar with the text's title, its length, and a Play button.
-Option+Space again, or Space, plays it, and nothing is written to disk until then.
-Up and Down change the volume while the card is up, and Option+Up and Option+Down the speed.
-The same keys work in the window, with Space to play and pause and Left and Right to skip.
-Text you have played before opens the note it already became rather than a duplicate.
-Once it is reading, Option+Space pauses it, and Space resumes it.
+- **Point it at folders you already have.**
+  It reads `.md`, `.txt`, and `.pdf` in place and never copies or uploads them, so an Obsidian vault works as it stands.
+- **Or select a paragraph in any app and press Option+Space.**
+  A small card appears under the menu bar with the text's title, its length, and a Play button.
+  The card wears the icon of the app the text came from, and names the site when it was a web page.
+  Nothing is written to disk until you play it.
+- **A note you play remembers where it came from.**
+  The app and the page go into the note's front matter, never a file path, so the player shows the same icon after a relaunch.
+  Text a password manager marks as concealed is never read.
+- **Text you have played before opens the note it already became**, rather than a duplicate.
+- **Reading the selection needs the Accessibility permission**, which Aloud asks for the first time.
+  Without it, and in the few apps that keep their selection to themselves, the card reads the clipboard instead, so copying always works.
+- **The hotkey can be rebound** in Settings.
 
-Reading the selection needs the Accessibility permission, which Aloud asks for the first time.
-Without it, and in the few apps that keep their selection to themselves, the card reads the clipboard instead, so copying always works.
+### Shortcuts
+
+Anywhere on the Mac:
+
+| Keys | Does |
+| --- | --- |
+| Option+Space | Read the selection, or the clipboard, in the app in front |
+| Option+Space while reading | Pause |
+
+While the card is up:
+
+| Keys | Does |
+| --- | --- |
+| Space or Enter | Play |
+| Escape | Dismiss the card |
+| Up / Down | Volume |
+| Option+Up / Option+Down | Speed |
+
+In the window:
+
+| Keys | Does |
+| --- | --- |
+| Space | Play and pause |
+| Left / Right | Skip back or forward 10 seconds |
+| Up / Down | Volume |
+| Option+Up / Option+Down | Speed |
+| Cmd+= / Cmd+- | Larger or smaller text |
+| Cmd+Shift+V | New note from the clipboard |
+| Cmd+S | Save while editing |
+| Enter | Open the selected document or folder |
+| Delete | Move the selected documents to the Trash |
+| Cmd+A / Escape | Select every card, or none |
+
+The media keys and AirPods work too.
 
 ## What it does
 
@@ -45,6 +82,7 @@ Without it, and in the few apps that keep their selection to themselves, the car
 - Edits `.md` and `.txt` in place, saving on Done, on blur, and on Cmd+S.
 - Keeps reading with the window closed. There is a menu bar player, the media keys and AirPods work, and the Now Playing card in Control Center shows what is playing. It pauses when you unplug your headphones.
 - Searches titles and full text across every folder as you type.
+- Selects like Finder: click a card, Shift-click a range, Cmd-click to add one, or drag a box around several. Double-click opens. The right-click menu acts on the whole selection.
 
 Aloud has no account, sends nothing off your Mac, and costs nothing.
 It is open source under the MIT license.

@@ -25,3 +25,12 @@ import Testing
         #expect(p?.title == "Note")
     }
 }
+
+@Suite struct ClipboardPreviewLabelTests {
+    @Test func theLabelIsTheOriginWhenKnownElseTheSource() {
+        let notes = Origin(app: "Notes", bundle: "com.apple.Notes")
+        #expect(ClipboardPreview(text: "Hi", source: .selection, origin: notes)?.label == "From Notes")
+        #expect(ClipboardPreview(text: "Hi", source: .selection)?.label == "From selection")
+        #expect(ClipboardPreview(text: "Hi", source: .clipboard)?.label == "From clipboard")
+    }
+}

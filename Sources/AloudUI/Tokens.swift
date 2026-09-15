@@ -24,6 +24,14 @@ public enum Radius {
     public static let l: CGFloat = 20
     /// The glyph plate in the clipboard panel.
     public static let plate: CGFloat = m
+    /// The plate under a selected card, and under a selected row.
+    public static let selection: CGFloat = m
+    public static let rowSelection: CGFloat = s
+    /// The paper under an app's icon on a card: the icon's own corner, carried out
+    /// through the clear margin around its tile so the clearing and the tile are
+    /// concentric. An app icon's tile is 824 of its 1024 points with a 185-point
+    /// corner, and the margin is the other 100 points a side.
+    public static let cardIconClearing: CGFloat = (185.0 + 100.0) / 1024.0 * Size.cardIcon
 }
 
 public enum Size {
@@ -34,13 +42,29 @@ public enum Size {
     public static let control: CGFloat = 32
     public static let playControl: CGFloat = 44
     public static let hairline: CGFloat = 1
+    /// How far a press must travel before it is a marquee rather than a click.
+    public static let marqueeThreshold: CGFloat = 4
     public static let cardWidth: CGFloat = 160
     public static let thumb = CGSize(width: 120, height: 150)
+    /// The card's whole page: the text's frame and the paper's inset around it. A
+    /// folder's glyph is drawn in a frame this tall, so the titles under a folder and a
+    /// document start on one line across a row.
+    public static let thumbPage = CGSize(
+        width: thumb.width + Space.s + Space.s, height: thumb.height + Space.s + Space.s)
     /// The card's picture of the file, shrunk to sit beside the title in the transport
     /// bar: the same proportions at the height of the bar's caption row, so the bar
     /// shows the file the library showed rather than a symbol standing in for it.
     /// Like `thumb`, this is the text's frame; the paper adds its inset around it.
     public static let barThumb = CGSize(width: 12, height: 16)
+    /// The icon of the app a note came from, in the thumbnail's place in the bar: the
+    /// thumbnail's full height, paper and all, so the row stays the same height either way.
+    public static let barIcon: CGFloat = barThumb.height + Space.xxs + Space.xxs
+    /// The same icon in the middle of a card's page: big enough to name the app from
+    /// across the grid, small enough that the page still reads as a page around it.
+    public static let cardIcon: CGFloat = 64
+    /// The same icon before the reader's title, at the bar's size, which is a
+    /// symbol's height in the toolbar once the icon's own margin is taken off.
+    public static let titleIcon: CGFloat = barIcon
     public static let minWindow = CGSize(width: 720, height: 480)
     public static let readerMeasure: CGFloat = 680
     /// The measure plus the text container's inset on each side.
@@ -88,8 +112,16 @@ public enum Ink {
     public static let track = Color.secondary.opacity(0.3)
     /// The plate under a badge's text: the accent, faint enough to sit inside a row.
     public static let badge = Color.accentColor.opacity(0.12)
+    /// The plate under a selected card or row, and the marquee that selects them: the
+    /// accent, faint as a plate and fainter as a sheet, with a firmer edge.
+    public static let selection = Color.accentColor.opacity(0.16)
+    public static let marqueeFill = Color.accentColor.opacity(0.08)
+    public static let marqueeStroke = Color.accentColor.opacity(0.5)
     public static let thumbPaper = Color.white
     public static let thumbInk = Color.black
+    /// The line around the paper: faint enough to vanish against the dark window,
+    /// firm enough to hold a white page apart from the light one.
+    public static let thumbEdge = Color.black.opacity(0.12)
     /// The mark's own colour, the icon's ring: the midpoint of its lit and shaded
     /// edges, sampled from the 1024 export. The landing page and the plates draw the
     /// mark in it; the menu bar takes the bar's tint instead.
@@ -148,6 +180,10 @@ public enum Motion {
     public static let normal: Double = 0.25
     public static let ease = Animation.easeOut(duration: normal)
     public static let quick = Animation.easeOut(duration: fast)
+    /// How long the library waits on its first scan before it says it is scanning:
+    /// longer than a small library takes to read, short enough that a slow one is not
+    /// a blank window for long.
+    public static let scanSpinnerDelay: Double = 0.5
     /// How long the search field waits after the last keystroke before it reads files.
     public static let searchDebounceMS: Double = 200
     /// A control that is present but has nothing to act on: the menu-bar glyph with

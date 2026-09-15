@@ -648,3 +648,41 @@ import Vault
         }
     }
 }
+
+/// A preview that knows where its text came from writes that into the note, and the
+/// note comes back with it: the bar's icon and the card's line are the same origin.
+@Suite @MainActor struct AppModelOriginTests {
+    let tests = AppModelTests()
+
+    @Test func playWritesTheOriginAndTheNoteCarriesIt() async throws {
+        try await tests.withModel { model, dir in
+            model.addRoot(dir)
+            let safari = Origin(
+                app: "Safari", bundle: "com.apple.Safari",
+                page: .init(url: URL(string: "https://example.com/a")!, title: "Example"))
+            let p = ClipboardPreview(text: "Hello there.", source: .selection, origin: safari)!
+            model.preview(p)
+            #expect(model.clipboardPanel == .preview(p))
+            let play = try #require(model.playPreview())
+            await play.value
+            #expect(model.clipboardPanel == .playing(p))
+            #expect(model.current?.origin == safari)
+            #expect(model.currentSubtitle == "From example.com")
+            let url = dir.appendingPathComponent("Hello there.md")
+            #expect(try String(contentsOf: url, encoding: .utf8) == safari.frontMatter + "Hello there.")
+        }
+    }
+
+    @Test func aPreviewCarriesItsOriginIntoTheLine() async throws {
+        try await tests.withModel { model, dir in
+            model.addRoot(dir)
+            let notes = Origin(app: "Notes", bundle: "com.apple.Notes")
+            let safari = Origin(app: "Safari", bundle: "com.apple.Safari")
+            model.preview(ClipboardPreview(text: "Picked.", source: .selection, origin: notes))
+            #expect(model.clipboardPanel?.preview?.origin == notes)
+            #expect(model.clipboardPanel?.preview?.label == "From Notes")
+            model.preview(ClipboardPreview(text: "Copied.", source: .clipboard, origin: safari))
+            #expect(model.clipboardPanel?.preview?.label == "From Safari")
+        }
+    }
+}

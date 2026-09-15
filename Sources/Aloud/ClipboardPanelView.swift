@@ -29,7 +29,8 @@ struct ClipboardPanelView: View {
     /// the panel opens.
     func card(for state: ClipboardPanelState) -> some View {
         ClipboardCard(
-            title: title(for: state), subtitle: subtitle(for: state), transport: transport(for: state),
+            title: title(for: state), subtitle: subtitle(for: state),
+            icon: OriginIcon.image(for: state.preview?.origin), transport: transport(for: state),
             progress: isPlayer(state) ? player.progress : 0,
             elapsed: Format.clock(isPlayer(state) ? player.elapsed : .zero),
             remaining: "~" + Format.clock(remaining(for: state)),
@@ -53,12 +54,13 @@ struct ClipboardPanelView: View {
 
     func subtitle(for s: ClipboardPanelState) -> String {
         switch s {
-        case .empty: "The clipboard has no text"
+        case .empty:
+            model.clipboard.read().concealed ? "The clipboard is hidden" : "The clipboard has no text"
         case .needsFolder: "Pick a folder in Aloud first"
         case .preview(_, let failure?): failure
         case .preview(let p, nil), .playing(let p):
             [
-                p.source.label, player.rate.label, level,
+                p.label, player.rate.label, level,
                 "~\(Format.minutes(p.estimate(factor: player.rate.factor)))", "\(p.words) words",
             ].compactMap { $0 }.joined(separator: " · ")
         }

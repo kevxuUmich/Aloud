@@ -30,14 +30,20 @@ public actor Vault {
     /// text would be named after are read, the title's own name and its numbered
     /// siblings, so the check costs a few reads and not the folder. A note edited since
     /// it was pasted no longer reads the same and is left as its own.
-    public func makeNote(text: String, in folder: URL) throws -> URL {
+    ///
+    /// The origin, when there is one, goes into the note's front matter, which is what
+    /// the file is compared without: the text is the note, and a note that was written
+    /// from the same paragraph in another app is still the same note.
+    public func makeNote(text: String, origin: Origin? = nil, in folder: URL) throws -> URL {
         let existing = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
         for name in NoteName.siblings(of: text, among: existing) {
             let url = folder.appendingPathComponent(name)
-            if (try? String(contentsOf: url, encoding: .utf8)) == text { return url }
+            if let file = try? String(contentsOf: url, encoding: .utf8), FrontMatter.strip(file) == text {
+                return url
+            }
         }
         let url = folder.appendingPathComponent(NoteName.make(from: text, taken: existing))
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try ((origin?.frontMatter ?? "") + text).write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
@@ -61,7 +67,7 @@ public actor Vault {
             return Document(
                 url: document.url, title: Title.from(text: text, fallback: clean),
                 preview: FrontMatter.strip(text), modified: .now, bytes: text.utf8.count,
-                type: document.type)
+                type: document.type, origin: document.origin)
         }
         let name = NoteName.fileName(for: clean, extension: document.url.pathExtension)
         let target = document.url.deletingLastPathComponent().appendingPathComponent(name)
