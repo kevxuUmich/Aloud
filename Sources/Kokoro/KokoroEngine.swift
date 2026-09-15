@@ -21,6 +21,11 @@ public protocol KokoroSynthesizing: Actor {
     /// voice this process has not spoken in costs about a third of a second on its first
     /// sentence, and the prewarm is where that belongs.
     func load(root: URL, cache: URL, voice: String) async throws
+    /// The pieces the SDK renders `text` in, in order: one for a sentence that fits the
+    /// model's shape, several for one that does not. Each is a text `synthesize` renders
+    /// as exactly one piece, so a sentence can be rendered and heard piece by piece.
+    func chunks(of text: String, voice: String, speed: Double) async throws -> [String]
+    /// The samples of `text`, trimmed to the speech in them.
     func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float]
     func unload()
 }
@@ -247,33 +252,52 @@ public actor KokoroEngine: KokoroSynthesizing {
         }
     }
 
+    /// The SDK's own split of a sentence: `prepare` returns one input per chunk, and its
+    /// text is what `synthesize` re-prepares into that one chunk. Rendering the chunks of a
+    /// long sentence one at a time is what lets the first be heard while the rest render,
+    /// and the seams between them be silences the app chose rather than the model's.
+    public func chunks(of text: String, voice: String, speed: Double) async throws -> [String] {
+        guard let tts else { throw KokoroEngineError.notLoaded }
+        do {
+            return try await tts.prepare(
+                text, voice: KokoroVoiceID(voice), options: KokoroSynthesisOptions(speed: Float(speed))
+            ).compactMap(\.text)
+        } catch {
+            throw Self.mapped(error)
+        }
+    }
+
+    /// Trimmed to the speech: the model puts about 0.35 s of silence before the first
+    /// word and 0.4 s after the last, and `Silence` says why that is cut.
     public func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float] {
         guard let tts else { throw KokoroEngineError.notLoaded }
         let audio: KokoroAudio
         do {
             audio = try await tts.synthesize(
                 text, voice: KokoroVoiceID(voice), options: KokoroSynthesisOptions(speed: Float(speed)))
-        } catch is CancellationError {
-            throw KokoroEngineError.cancelled
-        } catch KokoroError.synthesisCancelled {
-            throw KokoroEngineError.cancelled
-        } catch KokoroError.emptyText, KokoroError.emptyPhonemizerOutput {
-            throw KokoroEngineError.nothingToSay
-        } catch KokoroError.inaudibleChunk {
-            throw KokoroEngineError.nothingToSay
-        } catch KokoroPhonemizerError.emptyOutput {
-            // The SDK maps its own text-processing errors onto `KokoroError` but lets
-            // the phonemizer's own emptiness through untouched, so a line of "***" -
-            // a Markdown rule - arrives here rather than as `emptyPhonemizerOutput`.
-            // It is the same nothing, and a reading must not stall on it.
-            throw KokoroEngineError.nothingToSay
         } catch {
-            throw KokoroEngineError.synthesis(error.localizedDescription)
+            throw Self.mapped(error)
         }
         guard audio.sampleRate == Int(KokoroPlayback.sampleRate) else {
             throw KokoroEngineError.synthesis("unexpected sample rate \(audio.sampleRate)")
         }
-        return audio.samples
+        return Silence.trim(audio.samples)
+    }
+
+    /// The SDK's errors as the rest of the app sees them.
+    private static func mapped(_ error: Error) -> KokoroEngineError {
+        switch error {
+        case is CancellationError: .cancelled
+        case KokoroError.synthesisCancelled: .cancelled
+        case KokoroError.emptyText, KokoroError.emptyPhonemizerOutput: .nothingToSay
+        case KokoroError.inaudibleChunk: .nothingToSay
+        // The SDK maps its own text-processing errors onto `KokoroError` but lets the
+        // phonemizer's own emptiness through untouched, so a line of "***" - a Markdown
+        // rule - arrives here rather than as `emptyPhonemizerOutput`. It is the same
+        // nothing, and a reading must not stall on it.
+        case KokoroPhonemizerError.emptyOutput: .nothingToSay
+        default: .synthesis(error.localizedDescription)
+        }
     }
 
     /// Gives the model back. A prewarm already inside a CoreML prediction holds its own
