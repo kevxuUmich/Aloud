@@ -64,7 +64,9 @@ actor FakeEngine: KokoroSynthesizing {
         self.completion = completion
     }
     var volumes: [Double] = []
+    var shutdowns = 0
     func setVolume(_ volume: Double) { volumes.append(volume) }
+    func shutdown() { shutdowns += 1 }
     /// Counts the stop and keeps the completion: a real player can call back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }
@@ -336,7 +338,7 @@ actor FakeEngine: KokoroSynthesizing {
     /// Warm loads once and reports while it does; unload gives the memory back and a
     /// second warm loads again. A picked Apple voice is what calls unload.
     @Test func warmAndUnload() async throws {
-        let (p, engine, _, _, store) = try make()
+        let (p, engine, playback, _, store) = try make()
         await store.start()
         #expect(!p.isWarming && !p.isLoaded)
         p.warm()
@@ -348,6 +350,9 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(await engine.loads.first == store.installedRoot)
         p.unload()
         #expect(!p.isLoaded)
+        // The audio device goes back with the model's memory: nothing will be spoken
+        // until a Kokoro voice is picked again, and `play` restarts the engine itself.
+        #expect(playback.shutdowns == 1)
         #expect(await eventually { await engine.unloads == 1 })
         p.warm()
         await p.warmTask?.value

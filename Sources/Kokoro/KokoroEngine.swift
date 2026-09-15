@@ -1,6 +1,7 @@
 import Foundation
 import KokoroTTS
 import Speech
+import os
 
 /// What the engine can report. `KokoroError` is not `Sendable` and stays inside the
 /// actor; this is the shape of it the rest of the app sees.
@@ -26,10 +27,23 @@ public protocol KokoroSynthesizing: Actor {
 /// mono samples; `unload` gives the memory back.
 public actor KokoroEngine: KokoroSynthesizing {
     private var tts: KokoroTTS?
-    /// The buckets after the first, warmed once `load` has returned.
-    private var warmTask: Task<Void, Never>?
+    /// The buckets after the first, warmed once `load` has returned. Internal so the
+    /// suite can wait on the sequence it started.
+    private(set) var warmTask: Task<Void, Never>?
+    /// Bumped by `unload`. A `KokoroTTS.load` already inside the SDK cannot be cancelled,
+    /// and without this it would resume and write its model over the nil an unload left,
+    /// holding several hundred megabytes that nothing can reach or give back.
+    private var loadEpoch = 0
+    /// How one bucket is warmed. Nil in the app, where it is the SDK's own `prewarm` on
+    /// the model this actor holds; a test hands in its own, because the order, the
+    /// cancellation and the handle are worth asserting without CoreML in the room.
+    private let prewarmOverride: (@Sendable (String, Float) async -> Void)?
+    private let log = Logger(subsystem: "design.kevxu.aloud", category: "kokoro")
 
-    public init() {}
+    public init() { prewarmOverride = nil }
+
+    /// For the suite: the sequence without the SDK.
+    init(prewarm: @escaping @Sendable (String, Float) async -> Void) { prewarmOverride = prewarm }
 
     public var isLoaded: Bool { tts != nil }
 
@@ -108,10 +122,15 @@ public actor KokoroEngine: KokoroSynthesizing {
 
     /// Loads the SDK and warms the bucket the first sentence is likeliest to land in,
     /// then returns: the reader is not made to wait for buckets that sentence does not
-    /// need. The other three warm afterwards on this actor, so a `synthesize` that
-    /// arrives meanwhile waits for at most the one bucket in flight.
+    /// need. The other three warm afterwards, and a `synthesize` that arrives meanwhile
+    /// waits for at most the one bucket in flight. Not because of this actor's own
+    /// isolation, which `await tts.prewarm` gives up: `KokoroTTS` is itself an actor and
+    /// runs a whole prediction without suspending, so the two serialise there. That
+    /// property lives in the SDK and could change there.
     public func load(root: URL, cache: URL) async throws {
         guard tts == nil else { return }
+        loadEpoch += 1
+        let epoch = loadEpoch
         do {
             let loaded = try await KokoroTTS.load(
                 resources: .directory(root, compiledModelsDirectory: cache),
@@ -120,6 +139,9 @@ public actor KokoroEngine: KokoroSynthesizing {
             try await loaded.prewarm(
                 text: first.text, voice: Self.prewarmVoice,
                 options: KokoroSynthesisOptions(speed: first.speed))
+            // An unload arrived while the SDK was loading. It could not be cancelled, but
+            // keeping what it produced would hold the memory the unload asked back.
+            guard epoch == loadEpoch else { return }
             tts = loaded
         } catch is CancellationError {
             throw KokoroEngineError.cancelled
@@ -134,16 +156,39 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// The buckets the first sentence does not need. A failure here is not a failed
     /// load: the bundle is loaded and every sentence will still be spoken, the first
     /// one into that bucket just pays its own specialisation.
-    private func warmRemainingBuckets() {
+    ///
+    /// The handle is not cleared when the sequence ends. Clearing it there raced a
+    /// second load: the old sequence's last turn could nil out the handle the new one
+    /// had already stored, and a later `unload` would then have nothing to cancel.
+    /// A handle to a finished task costs nothing and `cancel()` on one is a no-op.
+    func warmRemainingBuckets() {
         warmTask?.cancel()
         warmTask = Task {
             for warm in Self.prewarms.dropFirst() {
-                guard !Task.isCancelled, let tts else { return }
-                try? await tts.prewarm(
-                    text: warm.text, voice: Self.prewarmVoice,
-                    options: KokoroSynthesisOptions(speed: warm.speed))
+                guard !Task.isCancelled else { return }
+                await prewarm(warm.text, speed: warm.speed)
             }
-            warmTask = nil
+        }
+    }
+
+    /// One bucket. A failure is logged rather than raised: a bucket that fails to
+    /// specialise on every launch is otherwise invisible, and all the reader ever sees
+    /// of it is an unexplained pause mid-reading.
+    private func prewarm(_ text: String, speed: Float) async {
+        if let prewarmOverride {
+            await prewarmOverride(text, speed)
+            return
+        }
+        guard let tts else { return }
+        do {
+            try await tts.prewarm(
+                text: text, voice: Self.prewarmVoice, options: KokoroSynthesisOptions(speed: speed))
+        } catch is CancellationError {
+        } catch KokoroError.synthesisCancelled {
+        } catch {
+            log.error(
+                "Kokoro could not prewarm the bucket at speed \(speed, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -176,7 +221,12 @@ public actor KokoroEngine: KokoroSynthesizing {
         return audio.samples
     }
 
+    /// Gives the model back. A prewarm already inside a CoreML prediction holds its own
+    /// reference until that prediction returns, and the SDK checks cancellation only at
+    /// stage boundaries, so the memory comes back within about a second on a warm cache
+    /// and within tens of seconds on a cold one, rather than at once.
     public func unload() {
+        loadEpoch += 1
         warmTask?.cancel()
         warmTask = nil
         tts = nil

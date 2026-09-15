@@ -240,9 +240,11 @@ public final class KokoroVoiceProvider: VoiceProvider {
         }
     }
 
-    /// Gives the memory back. Picking an Apple voice calls it.
+    /// Gives the memory back, and the audio device with it. Picking an Apple voice calls
+    /// it.
     public func unload() {
         stop()
+        playback.shutdown()
         // Past the epoch before the cancel: a load already through the SDK cannot be
         // cancelled, and this is what stops it reporting itself loaded afterwards.
         warmGeneration += 1

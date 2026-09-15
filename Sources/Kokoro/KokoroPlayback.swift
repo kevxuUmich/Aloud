@@ -10,6 +10,9 @@ public protocol KokoroPlaying: AnyObject {
     /// The level of whatever is playing, changed where it stands. Nothing is re-rendered.
     func setVolume(_ volume: Double)
     func stop()
+    /// Stops and gives the audio device back, for a reader who has picked another engine
+    /// and will not be spoken to by this one again until they pick it back.
+    func shutdown()
 }
 
 /// An audio engine with one player node at the model's 24 kHz mono, through a time
@@ -82,6 +85,14 @@ public final class KokoroPlayback: KokoroPlaying {
     public func stop() {
         generation += 1
         node.stop()
+    }
+
+    /// The audio engine stays running once started, which keeps the HAL awake for the
+    /// life of the process: a measurable idle draw on a laptop for an app that spends
+    /// most of its time paused. `play` starts it again when it is next needed.
+    public func shutdown() {
+        stop()
+        engine.stop()
     }
 
     /// The level, 0 to 1, with anything that is not a number read as full: Swift's
