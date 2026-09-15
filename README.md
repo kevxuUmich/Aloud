@@ -77,6 +77,7 @@ The media keys and AirPods work too.
 - Bookmarks a document from the reader or its card.
 - Offers eleven speeds from 0.5x to 3x, a quarter apart. A change takes effect on the current sentence.
 - Lets you preview every voice on the Mac before picking one, with seven recommended voices at the top of the list.
+- Adds seven Kokoro voices, neural voices Apple does not ship, as a one-time download from Aloud's own releases that then runs entirely on your Mac.
 - Skips back and forward 10 seconds, always to a sentence boundary.
 - Reads in sans or serif type, at five sizes, in light or dark.
 - Edits `.md` and `.txt` in place, saving on Done, on blur, and on Cmd+S.
@@ -85,6 +86,7 @@ The media keys and AirPods work too.
 - Selects like Finder: click a card, Shift-click a range, Cmd-click to add one, or drag a box around several. Double-click opens. The right-click menu acts on the whole selection.
 
 Aloud has no account, sends nothing off your Mac, and costs nothing.
+The one thing it ever downloads is the Kokoro voice models, once, from Aloud's own GitHub release, and only when you pick one of those voices.
 It is open source under the MIT license.
 
 ## Try it

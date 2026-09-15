@@ -5,7 +5,7 @@ public struct Gallery: View {
     public static let sections = [
         "GlassBar", "Card", "Thumb", "FolderCard", "IconButton", "TransportButton",
         "RateButton", "Scrubber", "EmptyState no vault", "EmptyState empty vault", "Notice",
-        "ListRow", "VoiceRow", "ClipboardCard", "ApertureGlyph", "VolumeControl",
+        "ListRow", "VoiceRow", "DownloadBanner", "ClipboardCard", "ApertureGlyph", "VolumeControl",
     ]
     public init() {}
     public var body: some View {
@@ -119,7 +119,31 @@ public struct Gallery: View {
                             name: "Kate", region: "United Kingdom", quality: "Enhanced",
                             badge: "50 MB", isSelected: false, isInstalled: false,
                             onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Bella", region: "United States", quality: "Premium",
+                            isSelected: true, isBusy: true, onPreview: {}, onPick: {})
+                        VoiceRow(
+                            name: "Fable", region: "United Kingdom", quality: "Premium",
+                            badge: "159 MB", isSelected: false, isInstalled: false, isDimmed: true,
+                            onPreview: {}, onPick: {})
                     }
+                }
+                section("DownloadBanner") {
+                    VStack(alignment: .leading, spacing: Space.l) {
+                        DownloadBanner(
+                            title: Copy.kokoroSection, phase: .idle(Copy.kokoroCaption), onCancel: {},
+                            onRetry: {})
+                        DownloadBanner(
+                            title: Copy.kokoroSection, phase: .progress(0.4), onCancel: {}, onRetry: {})
+                        DownloadBanner(
+                            title: Copy.kokoroSection, phase: .busy(Copy.kokoroInstalling), onCancel: {},
+                            onRetry: {})
+                        DownloadBanner(
+                            title: Copy.kokoroSection, phase: .failed("No internet connection."),
+                            onCancel: {},
+                            onRetry: {})
+                    }
+                    .frame(width: Size.popoverWidth)
                 }
                 section("ClipboardCard") {
                     VStack(alignment: .leading, spacing: Space.l) {

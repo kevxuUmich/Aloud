@@ -15,24 +15,36 @@ public final class Player {
     public private(set) var finished = false
     public private(set) var timeline: Timeline
 
-    /// A change while speaking is heard now: the utterance in the air was queued at
-    /// the old rate and cannot be re-timed, so it is cut and the rest of the sentence,
-    /// from the word reached, is spoken again at the new one. The clock keeps the
-    /// share of the sentence already heard rather than the seconds, since a sentence
-    /// half spoken at 1x is still half spoken at 2x.
+    /// A change while speaking is heard now. The provider is asked to re-time what it is
+    /// already playing, and only when it cannot is the sentence cut and the rest of it,
+    /// from the word reached, spoken again at the new speed: an utterance queued with a
+    /// system voice cannot be re-timed. The clock keeps the share of the sentence
+    /// already heard rather than the seconds either way, since a sentence half spoken at
+    /// 1x is still half spoken at 2x.
     public var rate: Rate = .x1 {
         didSet {
             timeline = Timeline(script: script, rate: rate, pauses: pauses)
             sentenceOffset = sentenceOffset * oldValue.factor / rate.factor
             guard isPlaying else { return }
+            if provider.setRate(rate) {
+                // The clock runs from an instant, not from the offset, so the rescale
+                // above survives only if that instant moves with it. The re-speak path
+                // below gets this for free from `speakCurrent`; nothing else does, and
+                // without it the next tick reads the wall time since the sentence began
+                // as seconds at the new rate and the bar jumps to the end of it.
+                if sentenceAnchor != nil { sentenceAnchor = .now - sentenceOffset }
+                return
+            }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }
     }
     /// The level the sentences are spoken at, 0 to 1, apart from the system volume.
-    /// A change while speaking is heard now, the way a rate change is: the utterance in
-    /// the air was queued at the old level, so the rest of the sentence is spoken again
-    /// from the word reached. The clock is untouched, since the timing has not changed.
+    /// A change while speaking is heard now. The provider is asked to re-level what it
+    /// is already playing, and only when it cannot is the rest of the sentence spoken
+    /// again from the word reached, the way a rate change is: an utterance queued with
+    /// a system voice cannot be re-levelled. The clock is untouched either way, since
+    /// the timing has not changed.
     ///
     /// Computed over `level` rather than observed on itself: `@Observable` makes a
     /// stored property an accessor pair, and a clamp written back from `didSet` would
@@ -44,6 +56,7 @@ public final class Player {
             guard clamped != level else { return }
             level = clamped
             guard isPlaying else { return }
+            if provider.setVolume(clamped) { return }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }
@@ -157,6 +170,11 @@ public final class Player {
         onVoiceUnavailable?(v)
     }
 
+    /// Asks again whether the chosen voice is still there. Assignment and `play` ask on
+    /// their own; this is for the moment a voice goes away without either, when its
+    /// engine fails to load.
+    public func revalidateVoice() { ensureVoiceIsInstalled() }
+
     public func seek(to index: Int) {
         let wasPlaying = isPlaying
         stopSpeaking()
@@ -214,6 +232,11 @@ public final class Player {
                 guard let self, gen == self.generation else { return }
                 self.advance()
             })
+        // The sentence after this one is handed over now, so an engine that renders
+        // ahead has it by the time the boundary comes. The last has nothing after it.
+        if sentenceIndex + 1 < script.sentences.count {
+            provider.prepare(script.sentences[sentenceIndex + 1].text, voice: voice, rate: rate)
+        }
     }
 
     /// Where the current word starts within the current sentence's text, or nil before

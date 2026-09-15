@@ -1,21 +1,25 @@
 import AloudUI
 import Foundation
+import Prose
 import Speech
 import Testing
 import Vault
 
 @testable import Aloud
+@testable import Kokoro
 
 /// The three rules the model keeps that are not a view's: one write at a time per
 /// file, the newest text is the one left on disk, and a reload is not navigation.
 ///
 /// Each case gets its own vault directory, its own progress file and its own
 /// `UserDefaults` suite for the root store, so no case can see the reader's real vault
-/// or another case's writes. `Defaults.store` is left alone on purpose: it is a
-/// process-global that `DefaultsTests` already swaps, and `.serialized` orders one
-/// suite's cases rather than two suites against each other, so a second swapper here
-/// would be a race between the two targets. Nothing below writes a setting; the model
-/// only reads the voice, the rate and the skip-code flag at init.
+/// or another case's writes. `Defaults.store` is a constant and cannot be swapped: a
+/// case that needs settings of its own binds `Defaults.overrideStore`, a task local, so
+/// it is that case's alone however many suites run beside it. `withKokoroModel` binds
+/// one, because the launch restore reads back the `voiceID` that `pickVoice` wrote. The
+/// cases that go through `withModel` do not, so their `pickVoice`, `setRate` and
+/// `setVolume` land in the process-wide store, which under `swift test` is the test
+/// binary's own domain and not the reader's Aloud.
 @Suite @MainActor struct AppModelTests {
     /// A model that touches nothing of the reader's: no vault roots, since the root
     /// store is pointed at a throwaway suite, and no real progress file.
@@ -55,12 +59,35 @@ import Vault
     }
 
     /// `open` is a task the caller cannot await, so the suite waits for its effect.
-    func poll(until condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(1)
+    ///
+    /// The deadline is generous on purpose: these conditions are milliseconds away on
+    /// an idle machine, and a second was close enough to a busy one's scheduling that a
+    /// 50 ms hold once outlived it and the assertion after the poll failed on timing
+    /// rather than on behaviour.
+    func poll(
+        until condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
+        // Said here rather than left to the assertion after the call: a condition that
+        // never came true is a timeout, and reading it off the expectation below made
+        // the original flake look like a behaviour failure.
+        Issue.record("the poll timed out", sourceLocation: sourceLocation)
+    }
+
+    /// The same, for a condition read off an actor.
+    func poll(
+        until condition: () async -> Bool, sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("the poll timed out", sourceLocation: sourceLocation)
     }
 
     /// Overlapping saves are queued through `enqueueSave` rather than `async let`
@@ -645,6 +672,314 @@ import Vault
             #expect(view.transport(for: .preview(p)) == ClipboardCard.Transport.ready)
             #expect(view.transport(for: .needsFolder(p)) == ClipboardCard.Transport.ready)
             #expect(view.transport(for: .playing(p)) == ClipboardCard.Transport.playing(isPlaying: false))
+        }
+    }
+
+    /// Switching between two system voices mid-sentence keeps the contract the whole app
+    /// has: the pick takes at the next sentence, and the one being read is not rewound
+    /// and said again. Only the Kokoro engine drops a sentence without finishing it.
+    @Test func anApplePickMidSentenceDoesNotRestartIt() async throws {
+        try await withModel { model, _ in
+            let apple = try #require(model.provider as? FakeVoiceProvider)
+            let second = Voice(id: "fake2", name: "Fake Two", language: "en-US", quality: .standard)
+            apple.voices = [try #require(apple.voices.first), second]
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.player.play()
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+
+            model.pickVoice(second)
+
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(apple.stops == 0)
+            #expect(model.player.isPlaying)
+            #expect(model.player.voice?.id == "fake2")
+        }
+    }
+
+    /// A model with a Kokoro provider over a store the test controls: nothing installed
+    /// unless the case installs it. The Apple provider and the engine come back too, so
+    /// a case can make the models fail to load and see what the system voice was then
+    /// asked to say.
+    func withKokoroModel(
+        _ body: (AppModel, KokoroVoiceProvider, KokoroStore, FakeDownloader, FakeVoiceProvider, FakeEngine)
+            async throws -> Void
+    ) async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "design.aloud.tests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer {
+            suite.removePersistentDomain(forName: name)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let paths = KokoroPaths(
+            support: dir.appendingPathComponent("s"), caches: dir.appendingPathComponent("c"))
+        let downloader = FakeDownloader()
+        let store = KokoroStore(paths: paths, release: KokoroRelease.current, downloader: downloader)
+        let engine = FakeEngine()
+        let kokoro = KokoroVoiceProvider(store: store, engine: engine, playback: FakePlayback())
+        let apple = FakeVoiceProvider()
+        let composite = CompositeVoiceProvider(
+            primary: apple, secondary: kokoro, secondaryPrefix: KokoroCatalogue.prefix)
+        // The settings this model reads and writes are the case's own, not the test
+        // binary's process-wide domain: `pickVoice` writes `voiceID`, and the launch
+        // restore reads it back, so two cases sharing one store would read each other's.
+        try await Defaults.$overrideStore.withValue(.init(suite)) {
+            let model = AppModel(
+                provider: composite, kokoro: kokoro,
+                progress: ProgressStore(file: dir.appendingPathComponent("progress.json")),
+                rootStore: RootStore(defaults: suite), notesFolder: dir, emptyPanelHold: .seconds(1))
+            try await body(model, kokoro, store, downloader, apple, engine)
+        }
+    }
+
+    /// Writes the marker a real install would leave, so the store's next `start()` finds
+    /// the model without the 159 MB.
+    func install(_ store: KokoroStore) throws {
+        try FileManager.default.createDirectory(
+            at: store.paths.modelDirectory(version: KokoroRelease.current.version),
+            withIntermediateDirectories: true)
+        try Data().write(to: store.paths.marker(version: KokoroRelease.current.version))
+    }
+
+    /// A reader who had the voices and whose model this build cannot load is not asked to
+    /// go and find the picker again: the launch sweeps the old version, and the download
+    /// they already consented to starts with their voice waiting on it.
+    @Test func aVersionBumpFetchesTheSavedVoiceBack() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: store.paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+            try Data().write(to: store.paths.marker(version: "0"))
+            model.pickVoice(KokoroCatalogue.voices[6].voice)
+
+            await model.restoreKokoro()
+
+            #expect(store.needsUpdate)
+            #expect(store.state == .downloading(0))
+            #expect(downloader.requests.count == 1)
+            #expect(model.pendingKokoroPick?.id == "kokoro.bm_fable")
+        }
+    }
+
+    /// A reader whose voice was not a Kokoro one is asked nothing: the picker shows the
+    /// download rows and nothing is fetched behind their back.
+    @Test func aVersionBumpWithNoKokoroVoiceSavedFetchesNothing() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: store.paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+            try Data().write(to: store.paths.marker(version: "0"))
+
+            await model.restoreKokoro()
+
+            #expect(store.needsUpdate)
+            #expect(store.state == .absent)
+            #expect(downloader.requests.isEmpty)
+            #expect(model.pendingKokoroPick == nil)
+        }
+    }
+
+    /// Picking a Kokoro voice loads the models; picking an Apple voice again gives the
+    /// memory back.
+    @Test func pickingAKokoroVoiceWarmsAndAnAppleVoiceUnloads() async throws {
+        try await withKokoroModel { model, kokoro, store, _, _, _ in
+            try install(store)
+            await store.start()
+            let bella = try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" })
+            model.pickVoice(bella)
+            #expect(kokoro.isWarming || kokoro.isLoaded)
+            await kokoro.warmTask?.value
+            #expect(kokoro.isLoaded)
+            #expect(model.player.voice?.id == "kokoro.af_bella")
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "fake" }))
+            #expect(!kokoro.isLoaded)
+        }
+    }
+
+    /// A row clicked before the download is the pick that takes when the install
+    /// completes, so the reader's intent needs no second click.
+    @Test func theRowClickedBeforeTheDownloadIsPickedAfterIt() async throws {
+        try await withKokoroModel { model, kokoro, store, _, _, _ in
+            await store.start()
+            let fable = KokoroCatalogue.voices[6].voice
+            model.downloadKokoro(picking: fable)
+            #expect(store.state == .downloading(0))
+            #expect(model.pendingKokoroPick?.id == "kokoro.bm_fable")
+            // The store's install needs a real archive; a marker written by hand and a
+            // direct completion stand in for the 159 MB.
+            try install(store)
+            await store.start()
+            store.onInstalled?()
+            #expect(model.player.voice?.id == "kokoro.bm_fable")
+            #expect(model.pendingKokoroPick == nil)
+            await kokoro.warmTask?.value
+            #expect(kokoro.isLoaded)
+        }
+    }
+
+    /// A pick made while the download runs is the reader's last word: the install
+    /// completing does not put the clicked row back over it.
+    @Test func anApplePickDuringTheDownloadWins() async throws {
+        try await withKokoroModel { model, _, store, _, _, _ in
+            await store.start()
+            model.downloadKokoro(picking: KokoroCatalogue.voices[6].voice)
+            let fake = try #require(model.provider.voices.first { $0.id == "fake" })
+            model.pickVoice(fake)
+            #expect(model.pendingKokoroPick == nil, "the explicit pick clears the pending one")
+            try install(store)
+            await store.start()
+            store.onInstalled?()
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.pendingKokoroPick == nil)
+        }
+    }
+
+    @Test func cancelAndRemoveReachTheStore() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            await store.start()
+            model.downloadKokoro(picking: nil)
+            model.cancelKokoroDownload()
+            #expect(store.state == .absent)
+            #expect(downloader.cancels == 1)
+            try install(store)
+            await store.start()
+            model.pickVoice(KokoroCatalogue.voices[0].voice)
+            model.removeKokoro()
+            #expect(store.state == .absent)
+            // The picked voice has gone with the model; the player is back on the system voice.
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.notice?.contains("not available") == true)
+        }
+    }
+
+    /// The models failing to load is said once, the reading goes on in the system voice,
+    /// and the sentence the failed engine could not speak is spoken again in it.
+    @Test func aLoadFailureFallsBackWithANotice() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.setFailLoad("no metal")
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            model.player.play()
+            // The first sentence is with the Kokoro engine, which has said nothing yet.
+            #expect(apple.spoken.isEmpty)
+            await kokoro.warmTask?.value
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.notice == "Kokoro voices could not be loaded: no metal. Using the system voice.")
+            // The sentence the failed engine could not speak is said again, in the system
+            // voice, and the reading has not stopped.
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
+        }
+    }
+
+    /// The prize the speed cap buys, driven through the stack the app actually assembles
+    /// rather than straight at the provider: `setRate` goes through `Player`, through the
+    /// composite, to the Kokoro provider, and a change among the speeds at or above the
+    /// cap asks the engine for nothing, because the samples in hand are already the ones
+    /// those speeds are played from. A change across the cap does need new audio and says
+    /// so, and then the sentence is spoken again as it always was.
+    @Test func aSpeedChangeAboveTheCapCostsTheEngineNothing() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.setRate(.x25)
+            model.player.play()
+            // The sentence being read, and then the one handed over for the boundary.
+            try await poll { await engine.calls.count == 2 }
+
+            model.setRate(.x3)
+
+            // `Player.stopSpeaking` is what a refused change runs, and it reaches both
+            // engines through the composite, so the system voice's stop count is the
+            // synchronous witness that nothing was torn down here.
+            #expect(apple.stops == 0)
+            #expect(await engine.calls.count == 2)
+            #expect(model.player.rate == .x3)
+            #expect(model.player.isPlaying)
+
+            // Across the cap the engine has no rendering to play at the new speed, so it
+            // says so and the sentence is spoken again, as it always was.
+            model.setRate(.x1)
+            #expect(apple.stops == 1)
+            try await poll { await engine.calls.count > 2 }
+            #expect(await engine.calls.last?.speed == 1)
+        }
+    }
+
+    /// A Kokoro voice picked mid-sentence takes at the next sentence, so the system
+    /// voice's sentence goes on being spoken while the models load. If that load fails,
+    /// the reader is told and the next sentence is the system voice's, but the one they
+    /// are listening to is not cut and started again: no sentence of the failed engine's
+    /// was ever in the air.
+    @Test func aLoadFailureDuringAnAppleSentenceDoesNotRestartIt() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.setFailLoad("no metal")
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.player.play()
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(apple.stops == 0)
+            #expect(model.player.isPlaying)
+            #expect(model.notice == "Kokoro voices could not be loaded: no metal. Using the system voice.")
+            #expect(model.player.voice?.id == "fake")
+        }
+    }
+
+    /// Switching from a Kokoro voice to an Apple one mid-sentence: the sentence in the
+    /// air is dropped by the unload and never reports itself finished, so the player
+    /// would sit playing in silence. It is spoken again in the voice now picked.
+    @Test func switchingAwayFromKokoroMidSentenceSpeaksItAgain() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.hold()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.player.play()
+            try await poll { await engine.calls.count == 1 }
+            #expect(apple.spoken.isEmpty)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "fake" }))
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
+        }
+    }
+
+    /// Removing the model mid-sentence is the same drop: the player falls back to the
+    /// system voice and says the sentence again rather than reading Playing over silence.
+    @Test func removingTheModelMidSentenceSpeaksItAgain() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.hold()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.player.play()
+            try await poll { await engine.calls.count == 1 }
+            #expect(apple.spoken.isEmpty)
+            model.removeKokoro()
+            #expect(model.player.voice?.id == "fake")
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
         }
     }
 }

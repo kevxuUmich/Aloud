@@ -34,6 +34,10 @@ targets:
         product: Vault
       - package: Aloud
         product: Speech
+      - package: Aloud
+        product: Kokoro
+      - package: Aloud
+        product: KokoroBundle
       # `Sources/Aloud` is compiled into this target directly rather than reached as a
       # product of the local package, so the app's own dependency has to be named here
       # too; without it the Xcode build cannot see `import KeyboardShortcuts`.
@@ -47,6 +51,7 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.network.client: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: design.kevxu.aloud

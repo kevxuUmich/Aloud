@@ -2,7 +2,11 @@ import Testing
 
 @testable import AloudUI
 
-@Suite struct TransportButtonTests {
+/// `@MainActor` because `TransportButton` is a SwiftUI view and so is main-actor
+/// isolated, initialiser and properties alike. Left off, every read below happens inside
+/// `#expect`'s expansion, which is nonisolated, and a release build says so fourteen
+/// times.
+@Suite @MainActor struct TransportButtonTests {
     /// The glyph carries the number, so the symbol is picked by the interval the button
     /// actually skips: a 10 second step drawn with a 15 in it would lie.
     @Test func theSkipGlyphSaysTheInterval() {

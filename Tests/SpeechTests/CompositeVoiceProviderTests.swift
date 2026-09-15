@@ -1,0 +1,127 @@
+import Foundation
+import Testing
+
+@testable import Speech
+
+@Suite @MainActor struct CompositeVoiceProviderTests {
+    let apple = Voice(id: "com.apple.voice.samantha", name: "Samantha", language: "en-US", quality: .premium)
+    let bella = Voice(id: "kokoro.af_bella", name: "Bella", language: "en-US", quality: .premium)
+
+    func make() -> (CompositeVoiceProvider, FakeVoiceProvider, FakeVoiceProvider) {
+        let a = FakeVoiceProvider(voices: [apple])
+        let k = FakeVoiceProvider(voices: [bella])
+        return (CompositeVoiceProvider(primary: a, secondary: k, secondaryPrefix: "kokoro."), a, k)
+    }
+
+    /// The list is one list, the second engine's voices first so a section can be cut
+    /// off the top of it; the default voice is the system's.
+    @Test func voicesAreConcatenatedSecondaryFirst() {
+        let (c, _, _) = make()
+        #expect(c.voices.map(\.id) == ["kokoro.af_bella", "com.apple.voice.samantha"])
+        #expect(c.defaultVoice?.id == "com.apple.voice.samantha")
+    }
+
+    @Test func speakAndPrepareGoToTheProviderThePrefixNames() {
+        let (c, a, k) = make()
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        c.prepare("Two.", voice: bella, rate: .x1)
+        #expect(k.spoken.map(\.text) == ["One."])
+        #expect(k.prepared.map(\.text) == ["Two."])
+        #expect(a.spoken.isEmpty && a.prepared.isEmpty)
+        c.speak("Three.", voice: apple, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        c.prepare("Four.", voice: nil, rate: .x1)
+        #expect(a.spoken.map(\.text) == ["Three."])
+        #expect(a.prepared.map(\.text) == ["Four."])
+        #expect(k.spoken.count == 1)
+    }
+
+    /// A finish from the routed provider reaches the caller unchanged.
+    @Test func callbacksPassThrough() {
+        let (c, _, k) = make()
+        var finished = 0
+        c.speak(
+            "One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in },
+            onFinish: { finished += 1 })
+        k.finishCurrent()
+        #expect(finished == 1)
+    }
+
+    @Test func previewIsRoutedByTheVoice() {
+        let (c, a, k) = make()
+        c.preview(bella)
+        c.preview(apple)
+        #expect(k.previewed.map(\.id) == ["kokoro.af_bella"])
+        #expect(a.previewed.map(\.id) == ["com.apple.voice.samantha"])
+    }
+
+    /// A level change belongs to whichever engine is speaking, and only one of them is.
+    /// Asking both would let the silent one answer for the one that is playing, and the
+    /// player takes a true for "the reader has heard it".
+    @Test func setVolumeGoesToTheEngineThatIsSpeaking() {
+        let (c, a, k) = make()
+        k.handlesVolume = true
+        // Before anything is spoken there is nothing to re-level, and the default
+        // routing is the system's, which cannot.
+        #expect(!c.setVolume(0.5))
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setVolume(0.4))
+        #expect(k.volumesSet == [0.4])
+        #expect(a.volumesSet == [0.5])
+        c.speak("Two.", voice: apple, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(!c.setVolume(0.3))
+        #expect(a.volumesSet == [0.5, 0.3])
+        #expect(k.volumesSet == [0.4])
+    }
+
+    /// A rate change belongs to whichever engine is speaking, for the same reason a level
+    /// change does.
+    @Test func setRateGoesToTheEngineThatIsSpeaking() {
+        let (c, a, k) = make()
+        k.handlesRate = true
+        #expect(!c.setRate(.x2))
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setRate(.x3))
+        #expect(k.ratesSet == [.x3])
+        #expect(a.ratesSet == [.x2])
+        c.speak("Two.", voice: apple, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(!c.setRate(.x25))
+        #expect(a.ratesSet == [.x2, .x25])
+        #expect(k.ratesSet == [.x3])
+    }
+
+    /// A preview from one engine may be interrupting speech from the other, so a stop
+    /// reaches both.
+    @Test func stopReachesBoth() {
+        let (c, a, k) = make()
+        c.stop()
+        #expect(a.stops == 1 && k.stops == 1)
+    }
+
+    /// Nothing is being spoken after a stop, so neither of the two questions that carry
+    /// no voice of their own is routed to the engine that was last speaking. Both fall
+    /// back to the primary and both answer no, whatever the second engine would have
+    /// said: a yes here would have the player believe the reader heard a change that
+    /// reached no audio at all.
+    @Test func nothingIsRetunedAfterAStop() {
+        let (c, _, k) = make()
+        k.handlesVolume = true
+        k.handlesRate = true
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setVolume(0.5))
+        #expect(c.setRate(.x3))
+        c.stop()
+        #expect(!c.setVolume(0.4))
+        #expect(!c.setRate(.x2))
+        #expect(k.volumesSet == [0.5])
+        #expect(k.ratesSet == [.x3])
+    }
+
+    @Test func refreshReachesBothAndAChangeInEitherShows() {
+        let (c, a, k) = make()
+        c.refreshVoices()
+        k.voices = []
+        #expect(c.voices.map(\.id) == ["com.apple.voice.samantha"])
+        a.voices = []
+        #expect(c.voices.isEmpty)
+    }
+}

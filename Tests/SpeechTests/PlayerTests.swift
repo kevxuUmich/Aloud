@@ -79,6 +79,47 @@ import Testing
         p.volume = 0.2
         #expect(fake.spoken.count == 2)
     }
+    /// A provider that can re-level what it is already playing is asked first, and when
+    /// it says it has, nothing is spoken again: on the Kokoro engine a re-speak is a
+    /// whole re-synthesis, and volume is the one parameter that needs no new audio.
+    @Test func aProviderThatRelevelsIsNotAskedToSpeakAgain() {
+        let (p, fake) = make()
+        fake.handlesVolume = true
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.volume = 0.5
+        #expect(fake.volumesSet == [0.5])
+        #expect(fake.stops == 0)
+        #expect(fake.spoken.count == 1)
+        #expect(p.volume == 0.5)
+        // A provider that cannot keeps today's behaviour.
+        fake.handlesVolume = false
+        p.volume = 0.2
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.count == 2)
+        #expect(fake.spoken.last?.volume == 0.2)
+    }
+    /// A provider that can re-time what it is already playing is asked first, and when it
+    /// says it has, the sentence is not spoken again. For an engine that renders ahead,
+    /// a re-speak would throw away the rendering it has already made of the next sentence
+    /// as well as the one being heard.
+    @Test func aProviderThatRetimesIsNotAskedToSpeakAgain() {
+        let (p, fake) = make()
+        fake.handlesRate = true
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.rate = .x2
+        #expect(fake.ratesSet == [.x2])
+        #expect(fake.stops == 0)
+        #expect(fake.spoken.count == 1)
+        #expect(p.rate == .x2)
+        // A provider that cannot keeps today's behaviour.
+        fake.handlesRate = false
+        p.rate = .x3
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.count == 2)
+        #expect(fake.spoken.last?.rate == .x3)
+    }
     /// The level is clamped to what the synthesizer accepts.
     @Test func volumeIsClampedToTheUnitRange() {
         let (p, _) = make()
@@ -139,6 +180,31 @@ import Testing
         p.rate = .x2
         #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
         #expect(abs(p.progress - 0.25 / 2.25) < 0.001)
+    }
+    /// And it keeps it past the next tick, which is the only place the share can be lost.
+    ///
+    /// The clock runs from an instant, not from the offset, so a rescale that does not
+    /// move that instant is undone 250 ms later: the tick measures wall time from where
+    /// the sentence started at the old speed and reads it as seconds at the new one.
+    /// On the re-speak path `speakCurrent` re-bases the instant for free; on the path
+    /// where the provider re-times what it is already playing, nothing else does.
+    @Test func aRetimedSentenceKeepsItsShareAtTheNextTick() {
+        let (p, fake) = make()
+        fake.handlesRate = true
+        p.play()
+        // Half of a 1.125 s sentence.
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        p.rate = .x2
+        #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
+        // The ticker reads the wall clock against the instant the sentence started at.
+        // Unless that instant moved with the rescale, this reading is the wall time
+        // since the sentence began, which here is nothing at all.
+        p.tick(now: .now)
+        #expect(abs(p.elapsed.seconds - 0.25) < 0.01, "\(p.elapsed.seconds)")
+        // And it goes on from there rather than jumping to the end of the sentence.
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        #expect(abs(p.elapsed.seconds - 0.5) < 0.001, "\(p.elapsed.seconds)")
+        #expect(p.elapsed < p.timeline.duration(at: 0), "\(p.elapsed.seconds)")
     }
     /// Each utterance carries the silence to leave after it: the sentence pause, or
     /// the paragraph pause where the sentence ends a paragraph. A change reaches the
@@ -293,5 +359,40 @@ import Testing
         #expect(p.sentenceIndex == 1)
         p.play()
         #expect(fake.spoken.last?.text == "Four five six.")
+    }
+
+    /// While one sentence is spoken the next is handed to the provider to get ready, so
+    /// an engine that synthesizes ahead can leave no gap at the boundary. The last
+    /// sentence has nothing after it, and nothing is prepared.
+    @Test func theNextSentenceIsPreparedWhileTheCurrentOneIsSpoken() {
+        let (p, fake) = make()
+        p.rate = .x15
+        p.play()
+        #expect(fake.prepared.map(\.text) == ["Four five six."])
+        #expect(fake.prepared.last?.rate == .x15)
+        fake.finishCurrent()
+        #expect(fake.prepared.map(\.text) == ["Four five six.", "Seven eight nine."])
+        fake.finishCurrent()
+        fake.finishCurrent()
+        #expect(p.sentenceIndex == 3)
+        #expect(fake.prepared.map(\.text) == ["Four five six.", "Seven eight nine.", "Ten eleven twelve."])
+    }
+
+    /// A voice can stop being available without being reassigned, when its engine
+    /// fails to load. The player is told to look again and falls back as it does for a
+    /// voice removed in System Settings.
+    @Test func revalidateFallsBackWhenTheVoiceHasGone() {
+        let fake = FakeVoiceProvider(voices: [
+            Voice(id: "fake", name: "Fake", language: "en-US", quality: .standard),
+            Voice(id: "kokoro.af_bella", name: "Bella", language: "en-US", quality: .premium),
+        ])
+        let p = Player(provider: fake)
+        p.voice = fake.voices[1]
+        var unavailable: [Voice] = []
+        p.onVoiceUnavailable = { unavailable.append($0) }
+        fake.voices = [fake.voices[0]]
+        p.revalidateVoice()
+        #expect(p.voice?.id == "fake")
+        #expect(unavailable.map(\.id) == ["kokoro.af_bella"])
     }
 }

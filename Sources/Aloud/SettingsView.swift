@@ -1,6 +1,7 @@
 import AloudUI
 import AppKit
 import KeyboardShortcuts
+import Kokoro
 import ServiceManagement
 import Speech
 import SwiftUI
@@ -116,6 +117,27 @@ struct SettingsView: View {
                 ) {
                     ForEach(Rate.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
+                if let store = model.kokoroStore {
+                    LabeledContent(Copy.kokoroSettingsLabel) {
+                        HStack(spacing: Space.m) {
+                            Text(Self.kokoroStatus(store.state))
+                                .foregroundStyle(Ink.soft)
+                                // The failure sentences are a line of prose, and this
+                                // row is an HStack: without this they truncate.
+                                .fixedSize(horizontal: false, vertical: true)
+                            switch store.state {
+                            case .installed:
+                                Button(Copy.remove) { model.removeKokoro() }
+                            case .downloading:
+                                Button(Copy.cancel) { model.cancelKokoroDownload() }
+                            case .installing:
+                                ProgressView().controlSize(.small)
+                            case .absent, .failed:
+                                Button(Copy.download) { model.downloadKokoro(picking: nil) }
+                            }
+                        }
+                    }
+                }
             }
             Section("Reading") {
                 Toggle("Skip code blocks in Markdown", isOn: $skipCode)
@@ -169,5 +191,18 @@ struct SettingsView: View {
                 p[keyPath: key] = .seconds(seconds)
                 model.setPauses(p)
             })
+    }
+
+    /// The one line the Voice section shows about the model: what it is doing, or what
+    /// is installed. The failure is already one sentence, so it stands as it is.
+    static func kokoroStatus(_ state: KokoroStoreState) -> String {
+        switch state {
+        case .absent: Copy.kokoroAbsent
+        case .downloading(let f): f.formatted(.percent.precision(.fractionLength(0)))
+        case .installing: Copy.kokoroInstalling
+        case .installed(let version, let bytes):
+            Copy.kokoroInstalled(version: version, size: KokoroRelease.megabytes(bytes))
+        case .failed(let message): message
+        }
     }
 }
