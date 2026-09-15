@@ -28,11 +28,19 @@ public protocol VoiceProvider: AnyObject, Sendable {
     /// re-level it; one that owns a player node can, and for it a re-speak would mean a
     /// whole re-synthesis for a parameter that needs no new audio.
     @MainActor func setVolume(_ volume: Double) -> Bool
+    /// Applies a new speed to whatever is being spoken now, the same bargain as
+    /// `setVolume`. True when the provider did; false when the sentence has to be spoken
+    /// again to be heard at the new speed. Most speeds need new audio and most engines
+    /// answer false; one that renders ahead and owns a time stretch can answer true for
+    /// the speeds its renderings already cover, and then the sentence it has rendered
+    /// ahead survives the change instead of being thrown away with the one being heard.
+    @MainActor func setRate(_ rate: Rate) -> Bool
 }
 
 extension VoiceProvider {
     @MainActor public func prepare(_ text: String, voice: Voice?, rate: Rate) {}
     @MainActor public func setVolume(_ volume: Double) -> Bool { false }
+    @MainActor public func setRate(_ rate: Rate) -> Bool { false }
 }
 
 /// The sentence every provider previews. One line, so the whole set can be auditioned

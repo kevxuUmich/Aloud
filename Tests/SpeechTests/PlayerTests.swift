@@ -99,6 +99,29 @@ import Testing
         #expect(fake.spoken.count == 2)
         #expect(fake.spoken.last?.volume == 0.2)
     }
+    /// A provider that can re-time what it is already playing is asked first, and when it
+    /// says it has, the sentence is not spoken again. For an engine that renders ahead,
+    /// a re-speak would throw away the rendering it has already made of the next sentence
+    /// as well as the one being heard.
+    @Test func aProviderThatRetimesIsNotAskedToSpeakAgain() {
+        let (p, fake) = make()
+        fake.handlesRate = true
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.rate = .x2
+        #expect(fake.ratesSet == [.x2])
+        #expect(fake.stops == 0)
+        #expect(fake.spoken.count == 1)
+        #expect(p.rate == .x2)
+        // The clock still moves with the rate: the audio really did get faster.
+        #expect(p.timeline.total == Timeline(script: p.script, rate: .x2, pauses: p.pauses).total)
+        // A provider that cannot keeps today's behaviour.
+        fake.handlesRate = false
+        p.rate = .x3
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.count == 2)
+        #expect(fake.spoken.last?.rate == .x3)
+    }
     /// The level is clamped to what the synthesizer accepts.
     @Test func volumeIsClampedToTheUnitRange() {
         let (p, _) = make()

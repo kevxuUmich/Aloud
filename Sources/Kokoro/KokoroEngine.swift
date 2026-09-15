@@ -110,7 +110,10 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// about 2.2, and the ceiling moves with how phoneme-dense the text is. The provider
     /// asks for at most this and hands the rest to a time stretch on the playback, which
     /// makes the reader's speed truthful and, because the prefetch is keyed on what the
-    /// engine was asked for, makes every speed at or above it one rendering.
+    /// engine was asked for, makes every speed at or above it one rendering. That is what
+    /// `KokoroVoiceProvider.setRate` spends: a change among those speeds is answered by
+    /// moving the time stretch, so the sentence being heard is not re-synthesized and the
+    /// one rendered ahead of it is not thrown away.
     public static let maxSpeed = 2.0
 
     /// One sentence per acoustic bucket, in the order a reader meets them.

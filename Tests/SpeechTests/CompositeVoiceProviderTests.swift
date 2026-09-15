@@ -73,6 +73,22 @@ import Testing
         #expect(k.volumesSet == [0.4])
     }
 
+    /// A rate change belongs to whichever engine is speaking, for the same reason a level
+    /// change does.
+    @Test func setRateGoesToTheEngineThatIsSpeaking() {
+        let (c, a, k) = make()
+        k.handlesRate = true
+        #expect(!c.setRate(.x2))
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setRate(.x3))
+        #expect(k.ratesSet == [.x3])
+        #expect(a.ratesSet == [.x2])
+        c.speak("Two.", voice: apple, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(!c.setRate(.x25))
+        #expect(a.ratesSet == [.x2, .x25])
+        #expect(k.ratesSet == [.x3])
+    }
+
     /// A preview from one engine may be interrupting speech from the other, so a stop
     /// reaches both.
     @Test func stopReachesBoth() {

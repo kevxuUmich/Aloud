@@ -47,6 +47,11 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// The voice the buckets are warmed in: whatever was last picked, previewed or
     /// spoken, and the catalogue's first before any of those.
     private var warmVoice = KokoroCatalogue.voices[0].kokoroID
+    /// The speed the sentence being spoken was rendered and is being played at, or nil
+    /// when nothing is. `setRate` compares against it to decide whether the samples in
+    /// hand can be played at a new speed, and `speak` plays at it so a change made while
+    /// a sentence was still rendering is heard on that sentence rather than the next.
+    private var rate: Rate?
     /// The level the reader last chose. `speak` is handed one with the sentence, but a
     /// change made while that sentence is still being rendered would otherwise be heard
     /// only from the sentence after it, which on this engine is seconds away.
@@ -57,8 +62,10 @@ public final class KokoroVoiceProvider: VoiceProvider {
     private var rendering = 0
 
     /// Keyed on what the engine was asked for, not on the `Rate`: every speed at or
-    /// above `KokoroEngine.maxSpeed` is one rendering, so changing from 2.25x to 3x
-    /// mid-sentence is a change to the playback's time stretch and no synthesis at all.
+    /// above `KokoroEngine.maxSpeed` is one rendering. That is what lets `setRate`
+    /// answer a change from 2.25x to 3x with the playback's time stretch and no
+    /// synthesis at all, and it is why the sentence rendered ahead survives the change
+    /// rather than being cancelled with the one being heard.
     struct CacheKey: Equatable {
         let text: String
         let voice: String
@@ -99,6 +106,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         cancelCurrent()
         generation += 1
         level = volume
+        self.rate = rate
         let gen = generation
         guard let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else {
             finish(after: pause, generation: gen, onFinish)
@@ -125,7 +133,8 @@ public final class KokoroVoiceProvider: VoiceProvider {
                 finish(after: pause, generation: gen, onFinish)
                 return
             }
-            playback.play(samples, volume: level, rate: Self.split(rate).stretch) { [weak self] in
+            playback.play(samples, volume: level, rate: Self.split(self.rate ?? rate).stretch) {
+                [weak self] in
                 guard let self, gen == self.generation else { return }
                 self.finish(after: pause, generation: gen, onFinish)
             }
@@ -169,9 +178,23 @@ public final class KokoroVoiceProvider: VoiceProvider {
         return true
     }
 
+    /// The speed of the sentence being played, changed where it stands when the samples
+    /// in hand can be played at it: above `KokoroEngine.maxSpeed` the engine was asked
+    /// for the cap and the rest is the playback's time stretch, so every speed from 2x
+    /// up shares one rendering and a change among them needs no new audio. Anything else
+    /// is false, and the player speaks the sentence again, which is the only way to hear
+    /// a speed the engine has not rendered.
+    public func setRate(_ new: Rate) -> Bool {
+        guard let rate, Self.split(rate).engine == Self.split(new).engine else { return false }
+        self.rate = new
+        playback.setRate(Self.split(new).stretch)
+        return true
+    }
+
     public func stop() {
         cancelCurrent()
         generation += 1
+        rate = nil
         prepared?.task.cancel()
         prepared = nil
         pendingPrepare = nil

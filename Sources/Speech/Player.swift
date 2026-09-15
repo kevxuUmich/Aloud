@@ -15,16 +15,18 @@ public final class Player {
     public private(set) var finished = false
     public private(set) var timeline: Timeline
 
-    /// A change while speaking is heard now: the utterance in the air was queued at
-    /// the old rate and cannot be re-timed, so it is cut and the rest of the sentence,
-    /// from the word reached, is spoken again at the new one. The clock keeps the
-    /// share of the sentence already heard rather than the seconds, since a sentence
-    /// half spoken at 1x is still half spoken at 2x.
+    /// A change while speaking is heard now. The provider is asked to re-time what it is
+    /// already playing, and only when it cannot is the sentence cut and the rest of it,
+    /// from the word reached, spoken again at the new speed: an utterance queued with a
+    /// system voice cannot be re-timed. The clock keeps the share of the sentence
+    /// already heard rather than the seconds either way, since a sentence half spoken at
+    /// 1x is still half spoken at 2x.
     public var rate: Rate = .x1 {
         didSet {
             timeline = Timeline(script: script, rate: rate, pauses: pauses)
             sentenceOffset = sentenceOffset * oldValue.factor / rate.factor
             guard isPlaying else { return }
+            if provider.setRate(rate) { return }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }

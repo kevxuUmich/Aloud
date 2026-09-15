@@ -24,6 +24,9 @@ public final class FakeVoiceProvider: VoiceProvider {
     /// is the system voice's answer; true is an engine that owns its player node.
     public private(set) var volumesSet: [Double] = []
     public var handlesVolume = false
+    /// The same, for the speed.
+    public private(set) var ratesSet: [Rate] = []
+    public var handlesRate = false
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
     /// The set is a lock-guarded value rather than a main-actor property because the
@@ -57,6 +60,10 @@ public final class FakeVoiceProvider: VoiceProvider {
     public func setVolume(_ volume: Double) -> Bool {
         volumesSet.append(volume)
         return handlesVolume
+    }
+    public func setRate(_ rate: Rate) -> Bool {
+        ratesSet.append(rate)
+        return handlesRate
     }
     public func stop() {
         stops += 1

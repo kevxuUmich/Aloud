@@ -67,8 +67,10 @@ actor FakeEngine: KokoroSynthesizing {
         self.completion = completion
     }
     var volumes: [Double] = []
+    var rates: [Double] = []
     var shutdowns = 0
     func setVolume(_ volume: Double) { volumes.append(volume) }
+    func setRate(_ rate: Double) { rates.append(rate) }
     func shutdown() { shutdowns += 1 }
     /// Counts the stop and keeps the completion: a real player can call back after one,
     /// and it must be the provider's own generation guard that swallows it.
@@ -452,19 +454,80 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(playback.played.last?.rate == 1)
     }
 
-    /// The prize of capping in the provider: every rate at or above the cap is one
-    /// rendering, so a sentence prepared at 2.5x is a hit when it is spoken at 3x and the
-    /// reader's speed change costs no synthesis at all.
-    @Test func ratesAboveTheCapShareOneRendering() async throws {
+    /// The prize of capping in the provider, driven the way `Player` drives it: speak
+    /// sentence one, hand over sentence two, change the rate above the cap mid-sentence,
+    /// and the boundary is still a hit. The rate change is answered by the time stretch,
+    /// so nothing is stopped and the rendering made for sentence two survives it.
+    @Test func aRateChangeAboveTheCapKeepsThePreparedSentence() async throws {
         let (p, engine, playback, _, store) = try make()
         await store.start()
         p.warm()
         await p.warmTask?.value
-        p.prepare("Two.", voice: bella, rate: .x25)
-        #expect(await eventually { await engine.calls.count == 1 })
-        p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        // `Player.speakCurrent`: speak this sentence, then hand over the next one.
+        p.speak("One.", voice: bella, rate: .x25, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
         #expect(await until { playback.played.count == 1 })
+        p.prepare("Two.", voice: bella, rate: .x25)
+        #expect(await eventually { await engine.calls.count == 2 })
+
+        // `Player.rate`'s didSet asks the provider before it stops anything.
+        #expect(p.setRate(.x3))
+        #expect(playback.rates == [1.5])
+
+        // The boundary: `Player.advance` speaks the sentence it handed over, at the rate
+        // it now holds. Still a hit, because both rates ask the engine for 2.
+        p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.count == 2)
+        #expect(playback.played.last?.rate == 1.5)
+    }
+
+    /// Below the cap two rates are two renderings, so the provider says it cannot and the
+    /// player speaks the sentence again, which is the only way to hear a different speed.
+    @Test func aRateChangeAcrossTheCapIsRefused() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        #expect(!p.setRate(.x3), "nothing is being spoken")
+        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        #expect(!p.setRate(.x3))
+        #expect(playback.rates.isEmpty)
         #expect(await engine.calls.count == 1)
+    }
+
+    /// The rate the provider was left at is the one the next sentence is rendered and
+    /// keyed at, so a prepare issued after a live rate change is not a miss at the
+    /// boundary.
+    @Test func aPrepareAfterALiveRateChangeIsKeyedAtTheNewRate() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        p.speak("One.", voice: bella, rate: .x25, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        #expect(p.setRate(.x3))
+        p.prepare("Two.", voice: bella, rate: .x3)
+        #expect(await eventually { await engine.calls.count == 2 })
+        #expect(await engine.calls.last?.speed == KokoroEngine.maxSpeed)
+        p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.count == 2)
+    }
+
+    /// A rate change while the sentence is still rendering is heard on that sentence
+    /// too, not only on the one after it.
+    @Test func aRateChangeDuringARenderReachesThatSentence() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.hold()
+        p.speak("One.", voice: bella, rate: .x25, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await eventually { await engine.calls.count == 1 })
+        #expect(p.setRate(.x3))
+        await engine.release()
+        #expect(await until { playback.played.count == 1 })
         #expect(playback.played.last?.rate == 1.5)
     }
 

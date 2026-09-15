@@ -9,6 +9,9 @@ public protocol KokoroPlaying: AnyObject {
     func play(_ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void)
     /// The level of whatever is playing, changed where it stands. Nothing is re-rendered.
     func setVolume(_ volume: Double)
+    /// The time stretch of whatever is playing, changed where it stands, for a speed the
+    /// samples in hand can still be played at.
+    func setRate(_ rate: Double)
     func stop()
     /// Stops and gives the audio device back, for a reader who has picked another engine
     /// and will not be spoken to by this one again until they pick it back.
@@ -81,6 +84,8 @@ public final class KokoroPlayback: KokoroPlaying {
     }
 
     public func setVolume(_ volume: Double) { node.volume = Self.level(volume) }
+
+    public func setRate(_ rate: Double) { timePitch.rate = Self.stretch(rate) }
 
     public func stop() {
         generation += 1

@@ -43,6 +43,8 @@ public final class CompositeVoiceProvider: VoiceProvider {
 
     public func setVolume(_ volume: Double) -> Bool { provider(for: speaking).setVolume(volume) }
 
+    public func setRate(_ rate: Rate) -> Bool { provider(for: speaking).setRate(rate) }
+
     public func prepare(_ text: String, voice: Voice?, rate: Rate) {
         provider(for: voice).prepare(text, voice: voice, rate: rate)
     }
