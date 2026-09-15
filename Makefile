@@ -50,7 +50,7 @@ test:
 	swift test $(TEST_FLAGS)
 
 check:
-	swift format lint --strict --recursive Sources Tests Package.swift
+	swift format lint --strict --recursive Sources Tests Tools/KokoroBundle Tools/kokoro-bundle Package.swift
 	swift build
 
 clean:

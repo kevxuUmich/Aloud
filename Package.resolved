@@ -1,5 +1,5 @@
 {
-  "originHash" : "8cd11c5d4d6e229edf9e9d5a9147dc1097ee78ecdf605933fb841541f067f64e",
+  "originHash" : "fb03ff40955d21ee80e7781d5c32a86f7d9c7a8ef35249409c2d1901e556aec5",
   "pins" : [
     {
       "identity" : "keyboardshortcuts",
@@ -8,6 +8,22 @@
       "state" : {
         "revision" : "ac302e21da5883f4bd0490cbd0cb710b08740500",
         "version" : "1.15.0"
+      }
+    },
+    {
+      "identity" : "kokoro-coreml",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kevinxu-cmd/kokoro-coreml.git",
+      "state" : {
+        "revision" : "2932a26444b8deba2a6be6c0aa45c0424efaefe1"
+      }
+    },
+    {
+      "identity" : "misakiswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kevinxu-cmd/MisakiSwift",
+      "state" : {
+        "revision" : "01e65a7b8451023906976ea7427a27212e34496c"
       }
     },
     {
