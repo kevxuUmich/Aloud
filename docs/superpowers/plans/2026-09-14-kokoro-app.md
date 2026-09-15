@@ -21,6 +21,7 @@ Plan 1 produced the forks and plan 2 the archive this plan downloads.
 - No number, colour, font size or duration literal in `Sources/Aloud` or `Sources/AloudUI` outside `Sources/AloudUI/Tokens.swift`; `Tests/AloudUITests/LiteralLintTests.swift` enforces the common forms. Every size, spacing and string the Kokoro section introduces goes through `Tokens.swift`.
 - The seven voices, in this order, with these Aloud ids, names and language tags: `kokoro.af_bella` Bella `en-US`, `kokoro.af_sarah` Sarah `en-US`, `kokoro.am_michael` Michael `en-US`, `kokoro.am_fenrir` Fenrir `en-US`, `kokoro.bf_emma` Emma `en-GB`, `kokoro.bm_george` George `en-GB`, `kokoro.bm_fable` Fable `en-GB`. Quality is `.premium`. The prefix is `kokoro.` and the Kokoro voice id is what follows it.
 - The download is pinned in one file by URL, version and SHA-256: `https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar`, version `1`, and the SHA-256 and byte count plan 2's Task 5 printed (also in the release's `kokoro-1.aar.sha256` asset). Nothing is fetched from Hugging Face at runtime.
+  Superseded after this plan ran: the final fix wave republished the models as `kokoro-2.aar`, the four-bucket bundle, and `Sources/Kokoro/KokoroRelease.swift` is where the current URL, version, SHA-256 and byte count live. `kokoro-1.aar` is still published and untouched.
 - Files live at `Application Support/Aloud/Kokoro/<version>/` and `Caches/Aloud/Kokoro/<version>/`, the latter excluded from backup. Both are the app's own directories.
 - The SDK is loaded with `KokoroTTS.load(resources: .directory(root, compiledModelsDirectory: cache))`; `KokoroError` is not `Sendable` and never crosses an actor boundary; the provider maps it.
 - Kokoro voices highlight the sentence, never the word: `onWord` is never called.
@@ -750,6 +751,7 @@ public enum KokoroRelease {
 
 The two values are the ones plan 2 published (its Task 5 printed them as `sha256:` and `bytes:`); they are also `curl -sL https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar.sha256` and `gh release view kokoro-models --json assets -q '.assets[] | select(.name=="kokoro-1.aar") | .size'`.
 They are already filled in above; the test refuses a placeholder.
+The values above are the ones this plan pinned; the final fix wave replaced them with `kokoro-2.aar`'s, and the file itself is the record of what the app pins today.
 
 Create `Sources/Kokoro/KokoroPaths.swift`:
 
