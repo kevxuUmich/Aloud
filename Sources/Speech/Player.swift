@@ -157,6 +157,11 @@ public final class Player {
         onVoiceUnavailable?(v)
     }
 
+    /// Asks again whether the chosen voice is still there. Assignment and `play` ask on
+    /// their own; this is for the moment a voice goes away without either, when its
+    /// engine fails to load.
+    public func revalidateVoice() { ensureVoiceIsInstalled() }
+
     public func seek(to index: Int) {
         let wasPlaying = isPlaying
         stopSpeaking()
@@ -214,6 +219,11 @@ public final class Player {
                 guard let self, gen == self.generation else { return }
                 self.advance()
             })
+        // The sentence after this one is handed over now, so an engine that renders
+        // ahead has it by the time the boundary comes. The last has nothing after it.
+        if sentenceIndex + 1 < script.sentences.count {
+            provider.prepare(script.sentences[sentenceIndex + 1].text, voice: voice, rate: rate)
+        }
     }
 
     /// Where the current word starts within the current sentence's text, or nil before

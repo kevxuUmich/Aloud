@@ -294,4 +294,39 @@ import Testing
         p.play()
         #expect(fake.spoken.last?.text == "Four five six.")
     }
+
+    /// While one sentence is spoken the next is handed to the provider to get ready, so
+    /// an engine that synthesizes ahead can leave no gap at the boundary. The last
+    /// sentence has nothing after it, and nothing is prepared.
+    @Test func theNextSentenceIsPreparedWhileTheCurrentOneIsSpoken() {
+        let (p, fake) = make()
+        p.rate = .x15
+        p.play()
+        #expect(fake.prepared.map(\.text) == ["Four five six."])
+        #expect(fake.prepared.last?.rate == .x15)
+        fake.finishCurrent()
+        #expect(fake.prepared.map(\.text) == ["Four five six.", "Seven eight nine."])
+        fake.finishCurrent()
+        fake.finishCurrent()
+        #expect(p.sentenceIndex == 3)
+        #expect(fake.prepared.map(\.text) == ["Four five six.", "Seven eight nine.", "Ten eleven twelve."])
+    }
+
+    /// A voice can stop being available without being reassigned, when its engine
+    /// fails to load. The player is told to look again and falls back as it does for a
+    /// voice removed in System Settings.
+    @Test func revalidateFallsBackWhenTheVoiceHasGone() {
+        let fake = FakeVoiceProvider(voices: [
+            Voice(id: "fake", name: "Fake", language: "en-US", quality: .standard),
+            Voice(id: "kokoro.af_bella", name: "Bella", language: "en-US", quality: .premium),
+        ])
+        let p = Player(provider: fake)
+        p.voice = fake.voices[1]
+        var unavailable: [Voice] = []
+        p.onVoiceUnavailable = { unavailable.append($0) }
+        fake.voices = [fake.voices[0]]
+        p.revalidateVoice()
+        #expect(p.voice?.id == "fake")
+        #expect(unavailable.map(\.id) == ["kokoro.af_bella"])
+    }
 }

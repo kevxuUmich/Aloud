@@ -17,6 +17,15 @@ public protocol VoiceProvider: AnyObject, Sendable {
     /// Speaks one fixed sentence in the given voice, so a reader can hear a voice
     /// before picking it. It does not touch the callbacks a `Player` has installed.
     @MainActor func preview(_ voice: Voice)
+    /// Tells the provider what will be asked for next, so an engine that synthesizes
+    /// ahead can have it ready. Nothing is heard; a `speak` for the same text, voice
+    /// and rate may then start without a gap. The system voice needs no warning and
+    /// takes the default, which does nothing.
+    @MainActor func prepare(_ text: String, voice: Voice?, rate: Rate)
+}
+
+extension VoiceProvider {
+    @MainActor public func prepare(_ text: String, voice: Voice?, rate: Rate) {}
 }
 
 /// The sentence every provider previews. One line, so the whole set can be auditioned
