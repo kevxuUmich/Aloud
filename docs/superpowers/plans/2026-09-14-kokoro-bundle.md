@@ -1600,7 +1600,8 @@ git commit -m "make kokoro-bundle builds the model archive from pinned inputs an
 
 **Interfaces:**
 - Produces: the release `kokoro-models` on `kevxuUmich/Aloud` with `kokoro-1.aar` and `kokoro-1.aar.sha256` attached, and the three values plan 3 pins in `KokoroRelease`: the asset URL `https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar`, the archive's SHA-256, and its byte count.
-  Since this plan ran, the final fix wave built the four-bucket bundle and published `kokoro-2.aar` beside these two under the same tag, and `KOKORO_VERSION` in the Makefile is 2. `kokoro-1.aar` is untouched.
+  Since this plan ran, the final fix wave built the four-bucket bundle and published `kokoro-2.aar` beside these two under the same tag, and `KOKORO_VERSION` in the Makefile is 2.
+  `kokoro-1.aar` is untouched.
 
 This creates a public release on the Aloud repository.
 It is outward-facing: confirm the go-ahead before running it if it was not given with the plan.
