@@ -20,6 +20,8 @@ public struct Provenance: Sendable {
     public let sdkCommit: String
     public let hfRepo: String
     public let hfRevision: String
+    /// Every file the bundle may contain, by its path under the inputs folder; build()
+    /// refuses a file with no record or a record that does not match.
     public let inputs: [PinnedRecord]
     public init(sdkCommit: String, hfRepo: String, hfRevision: String, inputs: [PinnedRecord]) {
         self.sdkCommit = sdkCommit
@@ -57,6 +59,9 @@ public struct Provenance: Sendable {
 public enum BuildError: Error, Equatable {
     case missingInput(String)
     case badVoiceID(String)
+    case unpinnedInput(String)
+    case provenanceMismatch(String)
+    case badPackageName(String)
 }
 
 /// Lays the inputs out the way the SDK reads them and writes the manifest over them.
@@ -75,9 +80,21 @@ public struct BundleBuilder: Sendable {
     }
 
     /// Builds the bundle folder at `root`, replacing one already there, and returns the
-    /// manifest it wrote.
+    /// manifest it wrote. Every name is validated before anything is copied, and every
+    /// copied file is checked against `provenance` before the manifest can be written, so
+    /// `hfProvenanceVerified` is never stamped true on a bundle that has not earned it.
     @discardableResult
     public func build(into root: URL, provenance: Provenance) throws -> RuntimeManifest {
+        for name in packages {
+            guard Self.isPackageName(name) else { throw BuildError.badPackageName(name) }
+        }
+        let sortedVoices = voices.sorted()
+        for id in sortedVoices {
+            guard Self.isVoiceID(id) else { throw BuildError.badVoiceID(id) }
+        }
+        let pinned = Dictionary(
+            provenance.inputs.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+
         let fm = FileManager.default
         try? fm.removeItem(at: root)
         for folder in ["coreml", "voices", "runtime"] {
@@ -87,20 +104,27 @@ public struct BundleBuilder: Sendable {
         for name in packages {
             let relative = "coreml/\(name).mlpackage"
             let destination = try copy(relative, to: root.appendingPathComponent(relative))
-            modelPackages.append(try Digest.package(at: destination, path: relative))
+            let digest = try Digest.package(at: destination, path: relative)
+            for file in digest.files {
+                try verify(file, sourcePath: "\(relative)/\(file.path)", against: pinned)
+            }
+            modelPackages.append(digest)
         }
         var voiceDigests: [FileDigest] = []
-        for id in voices.sorted() {
-            guard Self.isVoiceID(id) else { throw BuildError.badVoiceID(id) }
-            let destination = try copy(
-                "kokoro.js/voices/\(id).bin", to: root.appendingPathComponent("voices/\(id).bin"))
-            voiceDigests.append(try Digest.file(at: destination, path: "voices/\(id).bin"))
+        for id in sortedVoices {
+            let sourcePath = "kokoro.js/voices/\(id).bin"
+            let destination = try copy(sourcePath, to: root.appendingPathComponent("voices/\(id).bin"))
+            let digest = try Digest.file(at: destination, path: "voices/\(id).bin")
+            try verify(digest, sourcePath: sourcePath, against: pinned)
+            voiceDigests.append(digest)
         }
         var assets: [String: FileDigest] = [:]
         for name in Self.runtimeAssetNames {
             let relative = "runtime/\(name)"
             let destination = try copy(relative, to: root.appendingPathComponent(relative))
-            assets[name] = try Digest.file(at: destination, path: relative)
+            let digest = try Digest.file(at: destination, path: relative)
+            try verify(digest, sourcePath: relative, against: pinned)
+            assets[name] = digest
         }
         let download = try provenance.downloadManifest()
         try download.write(to: root.appendingPathComponent(Self.downloadManifestName))
@@ -128,10 +152,27 @@ public struct BundleBuilder: Sendable {
         return destination
     }
 
+    /// A copied file earns its place only if `provenance` has a record for its path under
+    /// the inputs folder, and that record's size and hash match what was just digested.
+    private func verify(_ digest: FileDigest, sourcePath: String, against pinned: [String: PinnedRecord])
+        throws
+    {
+        guard let record = pinned[sourcePath] else { throw BuildError.unpinnedInput(sourcePath) }
+        guard record.bytes == digest.bytes, record.sha256 == digest.sha256 else {
+            throw BuildError.provenanceMismatch(sourcePath)
+        }
+    }
+
     /// A Kokoro voice id is a language letter, a gender letter, an underscore and a name:
     /// `af_bella`. Anything else is refused before it can become a path.
     static func isVoiceID(_ id: String) -> Bool {
         id.wholeMatch(of: /[ab][fm]_[a-z]+/) != nil
+    }
+
+    /// A package name is lowercase letters, digits and underscores: `kokoro_duration_t128`.
+    /// Anything else is refused before it can become a path.
+    static func isPackageName(_ name: String) -> Bool {
+        name.wholeMatch(of: /^[a-z0-9_]+$/) != nil
     }
 
     /// Files 0644 and directories 0755, so the archive's mode fields do not depend on the

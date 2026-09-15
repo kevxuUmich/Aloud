@@ -47,21 +47,38 @@ import Testing
         return inputs
     }
 
-    var provenance: Provenance {
-        Provenance(
+    /// One pinned record per regular file actually under `inputs`, each keyed by its own
+    /// digest - a stand-in for the download manifest a real fetch would have produced,
+    /// since these tests fabricate their inputs rather than downloading them.
+    func provenance(for inputs: URL) throws -> Provenance {
+        let fm = FileManager.default
+        let keys: Set<URLResourceKey> = [.isRegularFileKey]
+        let root = inputs.standardizedFileURL.path
+        var records: [PinnedRecord] = []
+        if let enumerator = fm.enumerator(at: inputs, includingPropertiesForKeys: Array(keys)) {
+            for case let url as URL in enumerator {
+                let values = try url.resourceValues(forKeys: keys)
+                guard values.isRegularFile == true else { continue }
+                let full = url.standardizedFileURL.path
+                let relative = String(full.dropFirst(root.count + 1))
+                let digest = try Digest.file(at: url, path: relative)
+                records.append(
+                    PinnedRecord(
+                        path: relative, url: inputs.appendingPathComponent(relative).absoluteString,
+                        bytes: digest.bytes, sha256: digest.sha256))
+            }
+        }
+        return Provenance(
             sdkCommit: "2932a26444b8deba2a6be6c0aa45c0424efaefe1", hfRepo: "mattmireles/kokoro-coreml",
             hfRevision: "9b6c8dbcf1209eedb554ca2fe98e947948061638",
-            inputs: [
-                PinnedRecord(
-                    path: "coreml/x", url: "https://example.invalid/x", bytes: 1,
-                    sha256: String(repeating: "a", count: 64))
-            ])
+            inputs: records.sorted { $0.path < $1.path })
     }
 
     func build() throws -> (root: URL, manifest: RuntimeManifest) {
+        let inputs = try makeInputs()
         let root = try scratch().appendingPathComponent("kokoro-1")
-        let m = try BundleBuilder(inputs: try makeInputs(), packages: Self.packages, voices: Self.voices)
-            .build(into: root, provenance: provenance)
+        let m = try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+            .build(into: root, provenance: try provenance(for: inputs))
         return (root, m)
     }
 
@@ -95,6 +112,10 @@ import Testing
         #expect(m.bundleProfile == "aloud")
         #expect(m.supportedLanguages == ["en-US", "en-GB"])
         #expect(m.sdkCommit == "2932a26444b8deba2a6be6c0aa45c0424efaefe1")
+        #expect(m.minimumPlatforms == ["macOS": "15.0", "iOS": "18.0"])
+        #expect(
+            m.hfRepoID == "mattmireles/kokoro-coreml"
+                && m.hfRevision == "9b6c8dbcf1209eedb554ca2fe98e947948061638")
         #expect(m.modelPackages.map(\.path) == Self.packages.map { "coreml/\($0).mlpackage" })
         #expect(m.voices.map(\.path) == Self.voices.sorted().map { "voices/\($0).bin" })
         #expect(m.voices.allSatisfy { $0.bytes == 1024 })
@@ -133,8 +154,9 @@ import Testing
         let a = try scratch().appendingPathComponent("a")
         let b = try scratch().appendingPathComponent("b")
         let builder = BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
-        try builder.build(into: a, provenance: provenance)
-        try builder.build(into: b, provenance: provenance)
+        let pinned = try provenance(for: inputs)
+        try builder.build(into: a, provenance: pinned)
+        try builder.build(into: b, provenance: pinned)
         #expect(
             try Data(contentsOf: a.appendingPathComponent(RuntimeManifest.fileName))
                 == Data(contentsOf: b.appendingPathComponent(RuntimeManifest.fileName)))
@@ -156,15 +178,55 @@ import Testing
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.missingInput("kokoro.js/voices/bm_fable.bin")) {
             try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
-                .build(into: root, provenance: provenance)
+                .build(into: root, provenance: try provenance(for: inputs))
         }
     }
 
     @Test func aVoiceIDThatIsNotAVoiceIDIsRefused() throws {
+        let inputs = try makeInputs()
         let root = try scratch().appendingPathComponent("r")
         #expect(throws: BuildError.badVoiceID("../etc")) {
-            try BundleBuilder(inputs: try makeInputs(), packages: Self.packages, voices: ["../etc"])
-                .build(into: root, provenance: provenance)
+            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: ["../etc"])
+                .build(into: root, provenance: try provenance(for: inputs))
+        }
+    }
+
+    @Test func aPackageNameThatIsNotANameIsRefused() throws {
+        let inputs = try makeInputs()
+        let root = try scratch().appendingPathComponent("r")
+        #expect(throws: BuildError.badPackageName("../x")) {
+            try BundleBuilder(inputs: inputs, packages: ["../x"], voices: Self.voices)
+                .build(into: root, provenance: try provenance(for: inputs))
+        }
+    }
+
+    /// A file that no longer matches its pin is refused: the check is not merely "does a
+    /// record exist" but "does the record match what was just digested".
+    @Test func aFileWhoseBytesDoNotMatchItsPinIsRefused() throws {
+        let inputs = try makeInputs()
+        let pinned = try provenance(for: inputs)
+        let voice = inputs.appendingPathComponent("kokoro.js/voices/af_bella.bin")
+        var data = try Data(contentsOf: voice)
+        data[0] ^= 0xFF
+        try data.write(to: voice)
+        let root = try scratch().appendingPathComponent("r")
+        #expect(throws: BuildError.provenanceMismatch("kokoro.js/voices/af_bella.bin")) {
+            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+                .build(into: root, provenance: pinned)
+        }
+    }
+
+    /// A file with no pin at all is refused, even though it would otherwise copy cleanly:
+    /// the provenance list is the only source of truth for what belongs in the bundle.
+    @Test func anUnpinnedFileIsRefused() throws {
+        let inputs = try makeInputs()
+        let pinned = try provenance(for: inputs)
+        try Data("extra".utf8).write(
+            to: inputs.appendingPathComponent("coreml/kokoro_duration_t128.mlpackage/extra.bin"))
+        let root = try scratch().appendingPathComponent("r")
+        #expect(throws: BuildError.unpinnedInput("coreml/kokoro_duration_t128.mlpackage/extra.bin")) {
+            try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+                .build(into: root, provenance: pinned)
         }
     }
 }
