@@ -60,8 +60,13 @@ import Vault
     }
 
     /// `open` is a task the caller cannot await, so the suite waits for its effect.
+    ///
+    /// The deadline is generous on purpose: these conditions are milliseconds away on
+    /// an idle machine, and a second was close enough to a busy one's scheduling that a
+    /// 50 ms hold once outlived it and the assertion after the poll failed on timing
+    /// rather than on behaviour.
     func poll(until condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(1)
+        let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
