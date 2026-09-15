@@ -9,11 +9,19 @@ public enum ArchiveError: Error, Equatable {
 }
 
 /// One Apple Archive of a directory, LZFSE compressed, the format the model bundle
-/// ships in. The field key set is `TYP,PAT,DAT,MOD`: type, path, data and mode, and
-/// none of the times or owners the default set carries, so the same tree gives the same
-/// bytes on any machine.
+/// ships in. The field key set is `TYP,PAT,DAT,MOD,HLC`: type, path, data, mode and
+/// hard link cluster, and none of the times or owners the default set carries, so the
+/// same tree gives the same bytes on any machine.
+///
+/// `HLC` earns its place with `archiveDeduplicateData`: together they make the encoder
+/// give files that share an inode one cluster id and write the data under the first of
+/// them only, so the four acoustic buckets' byte-identical weights cost one copy rather
+/// than four (about 127 MB a bucket) and come back out as hard links again. Extraction
+/// restores the links from the same fields, which is why the app needs no post-processing
+/// of the tree it downloads. Neither field carries anything machine-specific: a cluster
+/// id is an index over the walk, so two builds of the same tree still give the same bytes.
 public enum AppleArchiveFile {
-    static let keySet = "TYP,PAT,DAT,MOD"
+    static let keySet = "TYP,PAT,DAT,MOD,HLC"
 
     public static func compress(directory: URL, to archive: URL) throws {
         guard
@@ -32,7 +40,8 @@ public enum AppleArchiveFile {
         }
         defer { if !finished { try? encoder.close() } }
         guard let keys = ArchiveHeader.FieldKeySet(keySet) else { throw ArchiveError.cannotWrite(keySet) }
-        try encoder.writeDirectoryContents(archiveFrom: FilePath(directory.path), keySet: keys)
+        try encoder.writeDirectoryContents(
+            archiveFrom: FilePath(directory.path), keySet: keys, flags: [.archiveDeduplicateData])
 
         // The encoder's end-of-archive marker and the compressor's trailer are only
         // flushed on close, so a failure here means a truncated archive: closes are

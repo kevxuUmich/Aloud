@@ -100,10 +100,14 @@ public struct BundleBuilder: Sendable {
         for folder in ["coreml", "voices", "runtime"] {
             try fm.createDirectory(at: root.appendingPathComponent(folder), withIntermediateDirectories: true)
         }
+        // What this build has already laid out, by the SHA-256 of its bytes: the four
+        // buckets differ only in their model.mlmodel, and a second input with the same
+        // bytes becomes a hard link to the first so the archive stores them once.
+        var placed: [String: URL] = [:]
         var modelPackages: [PackageDigest] = []
         for name in packages {
             let relative = "coreml/\(name).mlpackage"
-            let destination = try copy(relative, to: root.appendingPathComponent(relative))
+            let destination = try copy(relative, to: root.appendingPathComponent(relative), reusing: &placed)
             let digest = try Digest.package(at: destination, path: relative)
             for file in digest.files {
                 try verify(file, sourcePath: "\(relative)/\(file.path)", against: pinned)
@@ -113,7 +117,8 @@ public struct BundleBuilder: Sendable {
         var voiceDigests: [FileDigest] = []
         for id in sortedVoices {
             let sourcePath = "kokoro.js/voices/\(id).bin"
-            let destination = try copy(sourcePath, to: root.appendingPathComponent("voices/\(id).bin"))
+            let destination = try copy(
+                sourcePath, to: root.appendingPathComponent("voices/\(id).bin"), reusing: &placed)
             let digest = try Digest.file(at: destination, path: "voices/\(id).bin")
             try verify(digest, sourcePath: sourcePath, against: pinned)
             voiceDigests.append(digest)
@@ -121,7 +126,7 @@ public struct BundleBuilder: Sendable {
         var assets: [String: FileDigest] = [:]
         for name in Self.runtimeAssetNames {
             let relative = "runtime/\(name)"
-            let destination = try copy(relative, to: root.appendingPathComponent(relative))
+            let destination = try copy(relative, to: root.appendingPathComponent(relative), reusing: &placed)
             let digest = try Digest.file(at: destination, path: relative)
             try verify(digest, sourcePath: relative, against: pinned)
             assets[name] = digest
@@ -141,15 +146,56 @@ public struct BundleBuilder: Sendable {
         return manifest
     }
 
-    private func copy(_ relative: String, to destination: URL) throws -> URL {
+    private func copy(_ relative: String, to destination: URL, reusing placed: inout [String: URL]) throws
+        -> URL
+    {
         let source = inputs.appendingPathComponent(relative)
-        guard FileManager.default.fileExists(atPath: source.path) else {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory) else {
             throw BuildError.missingInput(relative)
         }
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: source, to: destination)
+        if isDirectory.boolValue {
+            try copyTree(from: source, to: destination, reusing: &placed)
+        } else {
+            try copyFile(from: source, to: destination, reusing: &placed)
+        }
         return destination
+    }
+
+    /// A package is a folder, so it is walked in sorted order rather than copied whole:
+    /// every file goes through `copyFile`, and the order is fixed so two builds lay the
+    /// same inode down first.
+    private func copyTree(from source: URL, to destination: URL, reusing placed: inout [String: URL]) throws {
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        for name in try FileManager.default.contentsOfDirectory(atPath: source.path).sorted() {
+            let child = source.appendingPathComponent(name)
+            var isDirectory: ObjCBool = false
+            _ = FileManager.default.fileExists(atPath: child.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                try copyTree(from: child, to: destination.appendingPathComponent(name), reusing: &placed)
+            } else {
+                try copyFile(from: child, to: destination.appendingPathComponent(name), reusing: &placed)
+            }
+        }
+    }
+
+    /// Bytes this build has already laid out are hard-linked rather than copied again,
+    /// which is what lets the archive store the buckets' shared weights once. A
+    /// filesystem that will not link gets a plain copy, correct but larger.
+    private func copyFile(from source: URL, to destination: URL, reusing placed: inout [String: URL]) throws {
+        let sha256 = try Digest.sha256(ofFileAt: source)
+        if let twin = placed[sha256] {
+            do {
+                try FileManager.default.linkItem(at: twin, to: destination)
+            } catch {
+                try FileManager.default.copyItem(at: source, to: destination)
+            }
+        } else {
+            try FileManager.default.copyItem(at: source, to: destination)
+        }
+        placed[sha256] = destination
     }
 
     /// A copied file earns its place only if `provenance` has a record for its path under

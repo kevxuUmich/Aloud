@@ -162,6 +162,29 @@ import Testing
                 == Data(contentsOf: b.appendingPathComponent(RuntimeManifest.fileName)))
     }
 
+    /// Two inputs with the same bytes become one inode in the built tree, which is what
+    /// lets the archive carry the buckets' shared weights once.
+    @Test func identicalInputsShareOneInodeInTheBuiltTree() throws {
+        let inputs = try makeInputs()
+        let shared = Data("the same weights".utf8)
+        let paths = Self.packages.prefix(2).map {
+            "coreml/\($0).mlpackage/Data/com.apple.CoreML/model.mlmodel"
+        }
+        for path in paths { try shared.write(to: inputs.appendingPathComponent(path)) }
+        let root = try scratch().appendingPathComponent("kokoro-1")
+
+        try BundleBuilder(inputs: inputs, packages: Self.packages, voices: Self.voices)
+            .build(into: root, provenance: try provenance(for: inputs))
+
+        let numbers = try paths.map { path -> Int in
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: root.appendingPathComponent(path).path)
+            return try #require(attributes[.systemFileNumber] as? Int)
+        }
+        #expect(numbers[0] == numbers[1], "\(numbers)")
+        #expect(try Data(contentsOf: root.appendingPathComponent(paths[1])) == shared)
+    }
+
     @Test func permissionsAreNormalised() throws {
         let (root, _) = try build()
         let file = root.appendingPathComponent("voices/af_bella.bin")
