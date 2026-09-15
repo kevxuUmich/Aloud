@@ -67,6 +67,33 @@ public enum KokoroInputs {
             "coreml/kokoro_duration_t128.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 38_918_912,
             "25db30a2ec864db6b048ce149e980a42dbc9ee2b29fdb8ca956b5a0e8289f1ee"),
         hf(
+            "coreml/kokoro_f0ntrain_t120.mlpackage/Manifest.json", 617,
+            "c81c0442ab6bf894f8490728ca6aec885e7e297421fb792cf166ca5409e11f33"),
+        hf(
+            "coreml/kokoro_f0ntrain_t120.mlpackage/Data/com.apple.CoreML/model.mlmodel", 84_673,
+            "67291d43eabecc46cc5ad9fe9a52288d4f31dd2c2b936244949f96e03cb5f9ad"),
+        hf(
+            "coreml/kokoro_f0ntrain_t120.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 20_497_408,
+            "5dd6617aba20d23aff99e40667ab008389668defe3813496b8bf45b434bf512f"),
+        hf(
+            "coreml/kokoro_f0ntrain_t280.mlpackage/Manifest.json", 617,
+            "06ec0b3545675e8de0fba2f45303a6034a5e731dcba87edb3f2b8e3fef794fef"),
+        hf(
+            "coreml/kokoro_f0ntrain_t280.mlpackage/Data/com.apple.CoreML/model.mlmodel", 84_755,
+            "378ed8776331a2a3a2e9fd6d76ff23156da0e2e06e3ec0e3e63bd6a0eed3b6d4"),
+        hf(
+            "coreml/kokoro_f0ntrain_t280.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 20_497_408,
+            "5dd6617aba20d23aff99e40667ab008389668defe3813496b8bf45b434bf512f"),
+        hf(
+            "coreml/kokoro_f0ntrain_t400.mlpackage/Manifest.json", 617,
+            "b056e74fafac571a3d1c021a18df25364affd21f98534d9392e4c0abc9eb5fbb"),
+        hf(
+            "coreml/kokoro_f0ntrain_t400.mlpackage/Data/com.apple.CoreML/model.mlmodel", 84_755,
+            "48ca73b747c7775dca90f71ae47d32830d4041695bb893dcf55c0aa2c0de1d5a"),
+        hf(
+            "coreml/kokoro_f0ntrain_t400.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 20_497_408,
+            "5dd6617aba20d23aff99e40667ab008389668defe3813496b8bf45b434bf512f"),
+        hf(
             "coreml/kokoro_f0ntrain_t600.mlpackage/Manifest.json", 617,
             "a2cdbcc7b3a77e0cf90c3b6c166d654bbb0c6925eef5076bef6b4fe8a12238e3"),
         hf(
@@ -76,6 +103,33 @@ public enum KokoroInputs {
             "coreml/kokoro_f0ntrain_t600.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 20_497_408,
             "5dd6617aba20d23aff99e40667ab008389668defe3813496b8bf45b434bf512f"),
         hf(
+            "coreml/kokoro_decoder_pre_3s.mlpackage/Manifest.json", 617,
+            "5e61e5597104580caaa190c21a0afc1d783ad326fcb0d240e577805bc97d4f1d"),
+        hf(
+            "coreml/kokoro_decoder_pre_3s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 74_390,
+            "5ed79fec1d9810b3ac781998e1e70f7e9d43567342316187414323988e5784af"),
+        hf(
+            "coreml/kokoro_decoder_pre_3s.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 67_190_976,
+            "9932a592f367dc61f3912430dbb79a7149c88c09b46e1ee2b57122aac1e05271"),
+        hf(
+            "coreml/kokoro_decoder_pre_7s.mlpackage/Manifest.json", 617,
+            "181d66a4e4b7b63ca3ec33a5c44ee41a56f8726a2aa93532ec2a516e3a8ce57a"),
+        hf(
+            "coreml/kokoro_decoder_pre_7s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 74_522,
+            "f0238e53ab2c6196e2f4899def1b1f475bbe64e4901c67dd2b83a0396da224c5"),
+        hf(
+            "coreml/kokoro_decoder_pre_7s.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 67_190_976,
+            "9932a592f367dc61f3912430dbb79a7149c88c09b46e1ee2b57122aac1e05271"),
+        hf(
+            "coreml/kokoro_decoder_pre_10s.mlpackage/Manifest.json", 617,
+            "43ee484278c2fcaf498fe531b4efa69014ff1653e2b5e1f2dfca3854ea3d5f25"),
+        hf(
+            "coreml/kokoro_decoder_pre_10s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 74_522,
+            "38a08acf75e254bb3f2d3a894b4972ef06a5c5cc9e5d39e68c590280d96854c5"),
+        hf(
+            "coreml/kokoro_decoder_pre_10s.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 67_190_976,
+            "9932a592f367dc61f3912430dbb79a7149c88c09b46e1ee2b57122aac1e05271"),
+        hf(
             "coreml/kokoro_decoder_pre_15s.mlpackage/Manifest.json", 617,
             "9c6a88ad42d0d3a4743a38e4896acd1707d32555e731a850ab1ba5cd4e5d5095"),
         hf(
@@ -84,6 +138,36 @@ public enum KokoroInputs {
         hf(
             "coreml/kokoro_decoder_pre_15s.mlpackage/Data/com.apple.CoreML/weights/weight.bin", 67_190_976,
             "9932a592f367dc61f3912430dbb79a7149c88c09b46e1ee2b57122aac1e05271"),
+        hf(
+            "coreml/kokoro_decoder_har_post_3s.mlpackage/Manifest.json", 617,
+            "f1a7d769e41016747fd556e5aea79c11e328c907786d3a2dbf3e5b0e88ea6f64"),
+        hf(
+            "coreml/kokoro_decoder_har_post_3s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 342_876,
+            "6050b421ac1b3785c1b99211d25835fec1f57e3c347c51673bec0ccab1f70113"),
+        hf(
+            "coreml/kokoro_decoder_har_post_3s.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+            39_353_848,
+            "e4ada8b28c56a4acda6a88e7c6d076aa65a39051841597bc0c4c07a60afe5ac2"),
+        hf(
+            "coreml/kokoro_decoder_har_post_7s.mlpackage/Manifest.json", 617,
+            "2209b06682d17218aa75c20a31a82cfa02a8e62646085fc9057a9c5caf80cc62"),
+        hf(
+            "coreml/kokoro_decoder_har_post_7s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 343_189,
+            "76bdb21faa36286934aae9e3ad9ddb1e78f43051cfb9986924f21a95c7cd66be"),
+        hf(
+            "coreml/kokoro_decoder_har_post_7s.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+            39_353_848,
+            "e4ada8b28c56a4acda6a88e7c6d076aa65a39051841597bc0c4c07a60afe5ac2"),
+        hf(
+            "coreml/kokoro_decoder_har_post_10s.mlpackage/Manifest.json", 617,
+            "b87b5ea3aaba0895273b008f8318632ac46d0d2e50a3533b583198eff9ecc449"),
+        hf(
+            "coreml/kokoro_decoder_har_post_10s.mlpackage/Data/com.apple.CoreML/model.mlmodel", 343_189,
+            "ecac9febb39839f624cc8df7f421e16cd1d6c4e6e7e043a643f02f8fea600b99"),
+        hf(
+            "coreml/kokoro_decoder_har_post_10s.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+            39_353_848,
+            "e4ada8b28c56a4acda6a88e7c6d076aa65a39051841597bc0c4c07a60afe5ac2"),
         hf(
             "coreml/kokoro_decoder_har_post_15s.mlpackage/Manifest.json", 617,
             "2357ffbaed935725d7defa5a689906d559f6b5cf05c124116a5e79df246df1dd"),

@@ -94,12 +94,48 @@ import Testing
         #expect(try Data(contentsOf: stale) == good)
     }
 
-    /// The pinned list is what the bundle is: four packages of three files, seven
+    /// The four buckets share their weights byte for byte, so the weight file is
+    /// downloaded once and the copies after it come from the one already on disk.
+    @Test func anIdenticalFileIsReusedRatherThanFetchedAgain() async throws {
+        let inputs = try scratch()
+        let bytes = Data((0..<4096).map { UInt8(truncatingIfNeeded: $0 % 251) })
+        let (first, _) = try pinned(bytes, path: "coreml/a.mlpackage/weights/weight.bin")
+        let (second, _) = try pinned(bytes, path: "coreml/b.mlpackage/weights/weight.bin")
+        let server = Server()
+        let fetcher = Fetcher(inputs: inputs) { try server.download($0) }
+
+        try await fetcher.fetch([first, second]) { _ in }
+
+        #expect(server.calls == 1)
+        #expect(try fetcher.isPresent(second))
+        #expect(try Data(contentsOf: inputs.appendingPathComponent(second.path)) == bytes)
+    }
+
+    /// The reuse looks at what is already in the inputs folder, not only at what this
+    /// run downloaded, so a later run that adds a bucket beside one already fetched
+    /// does not fetch the shared weights a second time.
+    @Test func aFileAlreadyOnDiskIsReusedByALaterIdenticalInput() async throws {
+        let inputs = try scratch()
+        let bytes = Data((0..<4096).map { UInt8(truncatingIfNeeded: $0 % 241) })
+        let (first, _) = try pinned(bytes, path: "coreml/a.mlpackage/weights/weight.bin")
+        let (second, _) = try pinned(bytes, path: "coreml/b.mlpackage/weights/weight.bin")
+        let server = Server()
+        let fetcher = Fetcher(inputs: inputs) { try server.download($0) }
+
+        try await fetcher.fetch([first]) { _ in }
+        try await fetcher.fetch([second, first]) { _ in }
+
+        #expect(server.calls == 1)
+        #expect(try fetcher.isPresent(second))
+    }
+
+    /// The pinned list is what the bundle is: thirteen packages of three files, seven
     /// voices, two assets, every path inside the inputs folder.
+    /// 13 * 3 + 7 + 2 = 48.
     @Test func thePinnedListIsComplete() {
         let paths = KokoroInputs.all.map(\.path)
-        #expect(paths.count == 21)
-        #expect(Set(paths).count == 21)
+        #expect(paths.count == 48)
+        #expect(Set(paths).count == 48)
         for name in KokoroInputs.packages {
             for file in [
                 "Manifest.json", "Data/com.apple.CoreML/model.mlmodel",
