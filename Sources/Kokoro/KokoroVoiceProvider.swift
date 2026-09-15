@@ -193,12 +193,14 @@ public final class KokoroVoiceProvider: VoiceProvider {
         playback.setRate(stretch)
         let chunks = await render.chunks ?? []
         guard gen == generation else { return }
+        log.debug("Kokoro speaks \(chunks.count) chunks rendered at \(render.key.speed, privacy: .public)")
         let tally = Tally()
         for i in chunks.indices {
             let samples = await render.samples(ofChunk: i)
             guard gen == generation else { return }
             guard let samples, !samples.isEmpty else { continue }
             tally.queued += 1
+            if tally.queued == 1 { log.debug("Kokoro queued the first chunk") }
             playback.enqueue(i + 1 < chunks.count ? samples + Self.seam : samples) { [weak self] in
                 guard let self, gen == self.generation else { return }
                 tally.heard += 1
@@ -270,7 +272,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
     public func setRate(_ new: Rate) -> Bool {
         guard let renderedSpeed else { return false }
         rate = new
-        playback.setRate(new.factor / renderedSpeed)
+        let stretch = new.factor / renderedSpeed
+        log.debug("Kokoro stretches the sentence in the air by \(stretch, privacy: .public)")
+        playback.setRate(stretch)
         if let prepared, prepared.key.speed != Self.split(new).engine {
             prepared.cancel()
             self.prepared = make(
