@@ -363,8 +363,8 @@ final class SpaceMeter: @unchecked Sendable {
     /// played and would sit there unreclaimable. It goes at the launch that finds it,
     /// and the launch says an update is needed so the reader's voice can be fetched back.
     @Test func anOlderVersionIsSweptAndAnUpdateIsReported() async throws {
-        let (_, release) = try makeArchive()
-        let (store, _, paths) = try make(release: release)
+        let (data, release) = try makeArchive()
+        let (store, downloader, paths) = try make(release: release)
         let fm = FileManager.default
         try fm.createDirectory(at: paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
         try fm.createDirectory(at: paths.compiledCache(version: "0"), withIntermediateDirectories: true)
@@ -375,6 +375,13 @@ final class SpaceMeter: @unchecked Sendable {
         #expect(store.needsUpdate)
         #expect(!fm.fileExists(atPath: paths.modelDirectory(version: "0").path))
         #expect(!fm.fileExists(atPath: paths.compiledCache(version: "0").path))
+
+        // One shot: the update it asked for lands, and the flag stops asking.
+        store.download()
+        try downloader.finish(with: data)
+        await install(store)
+        #expect(store.state == .installed(version: "1", bytes: 1024 + 22))
+        #expect(!store.needsUpdate)
     }
 
     /// The pinned version being installed is not an update: the older folder is swept

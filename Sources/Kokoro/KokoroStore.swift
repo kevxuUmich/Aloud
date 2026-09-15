@@ -54,7 +54,7 @@ public final class KokoroStore {
     /// True when this launch found a model from a version this build cannot load and
     /// swept it. The reader had those voices until a moment ago, so this is not the same
     /// as never having downloaded: the app model turns it into the download they already
-    /// consented to when they picked the voice.
+    /// consented to when they picked the voice. Cleared when that download installs.
     public private(set) var needsUpdate = false
 
     public let paths: KokoroPaths
@@ -261,6 +261,10 @@ public final class KokoroStore {
         switch outcome {
         case .success(let bytes):
             state = .installed(version: release.version, bytes: bytes)
+            // The update the sweep asked for has landed, so the flag has done its work.
+            // It is read once per launch today, but it is a flag with a reason to be
+            // false again and nothing should have to know that it is read only once.
+            needsUpdate = false
             onInstalled?()
         case .failure(let error):
             try? FileManager.default.removeItem(at: paths.archive)

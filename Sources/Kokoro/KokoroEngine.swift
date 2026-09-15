@@ -41,10 +41,15 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// the model this actor holds; a test hands in its own, because the order, the
     /// cancellation and the handle are worth asserting without CoreML in the room.
     private let prewarmOverride: (@Sendable (String, Float) async -> Void)?
-    /// The voice every bucket is warmed in, which is the one the reader picked. A voice
-    /// this process has never spoken in costs about 0.35 s extra on its first sentence,
-    /// measured, and warming in the wrong voice pays that on the sentence rather than
-    /// inside the wait the reader already accepted.
+    /// The voice every bucket is warmed in: the one the reader had picked when the models
+    /// were loaded. A voice this process has never spoken in costs about 0.35 s extra on
+    /// its first sentence, measured, and warming in the picked voice pays that inside the
+    /// wait the reader already accepted rather than on the sentence they pressed Play for.
+    ///
+    /// It is the voice of the load, not of every pick. A `load` that finds the models
+    /// already here returns without warming anything, so a second Kokoro voice picked in
+    /// the same session pays that 0.35 s on its own first sentence. Re-warming four
+    /// buckets on every pick would cost more than it saves, so this is deliberate.
     private var prewarmVoice = KokoroVoiceID(KokoroEngine.defaultPrewarmVoice)
     private let log = Logger(subsystem: "design.kevxu.aloud", category: "kokoro")
 
@@ -154,7 +159,20 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// runs a whole prediction without suspending, so the two serialise there. That
     /// property lives in the SDK and could change there.
     public func load(root: URL, cache: URL, voice: String) async throws {
-        guard tts == nil else { return }
+        if tts != nil {
+            // A model is already here, but the provider sends `load` and `unload` from
+            // the main actor and this call can reach the actor with an `unload` already
+            // waiting behind it. Yielding lets anything enqueued run, and then this asks
+            // the same question the slow path asks at its own suspension point: is the
+            // model this is about to report still the current one? Without it the
+            // provider would set `isLoaded` over a model that is about to go, and every
+            // sentence after that would finish silently with nothing spoken and no warm
+            // to recover, because `warm()` will not run again while `isLoaded` is true.
+            let epoch = loadEpoch
+            await Task.yield()
+            guard tts != nil, epoch == loadEpoch else { throw KokoroEngineError.cancelled }
+            return
+        }
         loadEpoch += 1
         let epoch = loadEpoch
         prewarmVoice = KokoroVoiceID(voice)
