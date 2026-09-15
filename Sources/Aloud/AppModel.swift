@@ -2,6 +2,7 @@ import AloudUI
 import AppKit
 import Foundation
 import KeyboardShortcuts
+import Kokoro
 import Observation
 import Prose
 import ServiceManagement
@@ -40,6 +41,12 @@ final class AppModel {
     /// The picker needs the installed set, and it is the same provider the player
     /// speaks through, so a preview and a sentence never come from two synthesizers.
     let provider: any VoiceProvider
+    /// The second engine, when the app has one. Nil under `--silent`.
+    let kokoro: KokoroVoiceProvider?
+    var kokoroStore: KokoroStore? { kokoro?.store }
+    /// The Kokoro row clicked before the model was downloaded: picked when the install
+    /// completes, so the click that started the download is the pick.
+    var pendingKokoroPick: Voice?
     let progress: ProgressStore
     let extraction = Extraction()
     private let rootStore: RootStore
@@ -157,7 +164,8 @@ final class AppModel {
     /// The root store is a parameter so a test can point it at its own defaults suite
     /// rather than at the reader's real vault.
     init(
-        provider: any VoiceProvider, progress: ProgressStore = .standard(),
+        provider: any VoiceProvider, kokoro: KokoroVoiceProvider? = nil,
+        progress: ProgressStore = .standard(),
         rootStore: RootStore = RootStore(), notesFolder: URL = NotesFolder.url,
         emptyPanelHold: Duration = .seconds(Motion.emptyPanelHold)
     ) {
@@ -165,6 +173,7 @@ final class AppModel {
         self.rootStore = rootStore
         self.player = Player(provider: provider)
         self.provider = provider
+        self.kokoro = kokoro
         self.progress = progress
         self.notesFolder = NotesFolder.ensure(notesFolder)
         let loaded = rootStore.load()
@@ -200,13 +209,60 @@ final class AppModel {
             guard let self, self.current != nil else { return }
             self.record(index: self.player.sentenceIndex, finished: true)
         }
+        kokoro?.onLoadFailure = { [weak self] message in
+            guard let self else { return }
+            // The provider's list is empty now; the player's own check falls back and
+            // posts its own notice, which this one then says more about.
+            self.player.revalidateVoice()
+            // The sentence the failed engine could not speak was reported finished
+            // silently, so it is spoken again, in the voice that is now the player's.
+            if self.player.isPlaying {
+                self.player.pause()
+                self.player.play()
+            }
+            self.notice = "Kokoro voices could not be loaded: \(message). Using the system voice."
+        }
+        kokoro?.store.onInstalled = { [weak self] in
+            guard let self else { return }
+            if let v = self.pendingKokoroPick {
+                self.pendingKokoroPick = nil
+                self.pickVoice(v)
+            }
+        }
     }
 
     /// The one writer of `player.voice` after init, so the choice and what is
-    /// remembered can never disagree. It takes at the next sentence.
+    /// remembered can never disagree. It takes at the next sentence. A Kokoro voice
+    /// loads its models now, so the first sentence does not wait; an Apple voice gives
+    /// that memory back.
     func pickVoice(_ v: Voice) {
         player.voice = v
         Defaults.voiceID = v.id
+        if KokoroCatalogue.isKokoro(v.id) {
+            kokoro?.warm()
+        } else {
+            kokoro?.unload()
+        }
+    }
+
+    /// Starts the one download. `voice` is the row that was clicked, picked once the
+    /// install completes; nil from Settings, where no row was.
+    func downloadKokoro(picking voice: Voice?) {
+        pendingKokoroPick = voice
+        kokoroStore?.download()
+    }
+
+    func cancelKokoroDownload() {
+        pendingKokoroPick = nil
+        kokoroStore?.cancel()
+    }
+
+    /// Removes the model. A Kokoro voice that was picked is gone with it, and the
+    /// player falls back through its own check.
+    func removeKokoro() {
+        kokoro?.unload()
+        kokoroStore?.remove()
+        player.revalidateVoice()
     }
 
     /// The one writer of `player.rate` after init, for the same reason.
@@ -246,6 +302,20 @@ final class AppModel {
         installHotkey()
         Task { await refresh() }
         watch()
+        Task {
+            await kokoroStore?.start()
+            // The launch-time lookup in `init` runs before this sweep, when the Kokoro
+            // provider's list is still empty, so a saved Kokoro voice is restored here
+            // instead of being dropped there.
+            if let id = Defaults.voiceID, KokoroCatalogue.isKokoro(id),
+                let v = provider.voices.first(where: { $0.id == id })
+            {
+                player.voice = v
+            }
+            // The saved voice was a Kokoro one and the model is here: load it now, so
+            // Play does not wait.
+            if let v = player.voice, KokoroCatalogue.isKokoro(v.id) { kokoro?.warm() }
+        }
         Task { await restoreLast() }
         // The debounced write is the one thing that can still be in the air at quit.
         terminateObserver = NotificationCenter.default.addObserver(

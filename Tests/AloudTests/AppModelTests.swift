@@ -1,10 +1,12 @@
 import AloudUI
 import Foundation
+import Prose
 import Speech
 import Testing
 import Vault
 
 @testable import Aloud
+@testable import Kokoro
 
 /// The three rules the model keeps that are not a view's: one write at a time per
 /// file, the newest text is the one left on disk, and a reload is not navigation.
@@ -645,6 +647,125 @@ import Vault
             #expect(view.transport(for: .preview(p)) == ClipboardCard.Transport.ready)
             #expect(view.transport(for: .needsFolder(p)) == ClipboardCard.Transport.ready)
             #expect(view.transport(for: .playing(p)) == ClipboardCard.Transport.playing(isPlaying: false))
+        }
+    }
+
+    /// A model with a Kokoro provider over a store the test controls: nothing installed
+    /// unless the case installs it. The Apple provider and the engine come back too, so
+    /// a case can make the models fail to load and see what the system voice was then
+    /// asked to say.
+    func withKokoroModel(
+        _ body: (AppModel, KokoroVoiceProvider, KokoroStore, FakeDownloader, FakeVoiceProvider, FakeEngine)
+            async throws -> Void
+    ) async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "design.aloud.tests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer {
+            suite.removePersistentDomain(forName: name)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let paths = KokoroPaths(
+            support: dir.appendingPathComponent("s"), caches: dir.appendingPathComponent("c"))
+        let downloader = FakeDownloader()
+        let store = KokoroStore(paths: paths, release: KokoroRelease.current, downloader: downloader)
+        let engine = FakeEngine()
+        let kokoro = KokoroVoiceProvider(store: store, engine: engine, playback: FakePlayback())
+        let apple = FakeVoiceProvider()
+        let composite = CompositeVoiceProvider(
+            primary: apple, secondary: kokoro, secondaryPrefix: KokoroCatalogue.prefix)
+        let model = AppModel(
+            provider: composite, kokoro: kokoro,
+            progress: ProgressStore(file: dir.appendingPathComponent("progress.json")),
+            rootStore: RootStore(defaults: suite), notesFolder: dir, emptyPanelHold: .seconds(1))
+        try await body(model, kokoro, store, downloader, apple, engine)
+    }
+
+    /// Writes the marker a real install would leave, so the store's next `start()` finds
+    /// the model without the 159 MB.
+    func install(_ store: KokoroStore) throws {
+        try FileManager.default.createDirectory(
+            at: store.paths.modelDirectory(version: "1"), withIntermediateDirectories: true)
+        try Data().write(to: store.paths.marker(version: "1"))
+    }
+
+    /// Picking a Kokoro voice loads the models; picking an Apple voice again gives the
+    /// memory back.
+    @Test func pickingAKokoroVoiceWarmsAndAnAppleVoiceUnloads() async throws {
+        try await withKokoroModel { model, kokoro, store, _, _, _ in
+            try install(store)
+            await store.start()
+            let bella = try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" })
+            model.pickVoice(bella)
+            #expect(kokoro.isWarming || kokoro.isLoaded)
+            await kokoro.warmTask?.value
+            #expect(kokoro.isLoaded)
+            #expect(model.player.voice?.id == "kokoro.af_bella")
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "fake" }))
+            #expect(!kokoro.isLoaded)
+        }
+    }
+
+    /// A row clicked before the download is the pick that takes when the install
+    /// completes, so the reader's intent needs no second click.
+    @Test func theRowClickedBeforeTheDownloadIsPickedAfterIt() async throws {
+        try await withKokoroModel { model, kokoro, store, _, _, _ in
+            await store.start()
+            let fable = KokoroCatalogue.voices[6].voice
+            model.downloadKokoro(picking: fable)
+            #expect(store.state == .downloading(0))
+            #expect(model.pendingKokoroPick?.id == "kokoro.bm_fable")
+            // The store's install needs a real archive; a marker written by hand and a
+            // direct completion stand in for the 159 MB.
+            try install(store)
+            await store.start()
+            store.onInstalled?()
+            #expect(model.player.voice?.id == "kokoro.bm_fable")
+            #expect(model.pendingKokoroPick == nil)
+            await kokoro.warmTask?.value
+            #expect(kokoro.isLoaded)
+        }
+    }
+
+    @Test func cancelAndRemoveReachTheStore() async throws {
+        try await withKokoroModel { model, _, store, downloader, _, _ in
+            await store.start()
+            model.downloadKokoro(picking: nil)
+            model.cancelKokoroDownload()
+            #expect(store.state == .absent)
+            #expect(downloader.cancels == 1)
+            try install(store)
+            await store.start()
+            model.pickVoice(KokoroCatalogue.voices[0].voice)
+            model.removeKokoro()
+            #expect(store.state == .absent)
+            // The picked voice has gone with the model; the player is back on the system voice.
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.notice?.contains("not available") == true)
+        }
+    }
+
+    /// The models failing to load is said once, the reading goes on in the system voice,
+    /// and the sentence the failed engine could not speak is spoken again in it.
+    @Test func aLoadFailureFallsBackWithANotice() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.setFailLoad("no metal")
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            model.player.play()
+            // The first sentence is with the Kokoro engine, which has said nothing yet.
+            #expect(apple.spoken.isEmpty)
+            await kokoro.warmTask?.value
+            #expect(model.player.voice?.id == "fake")
+            #expect(model.notice == "Kokoro voices could not be loaded: no metal. Using the system voice.")
+            // The sentence the failed engine could not speak is said again, in the system
+            // voice, and the reading has not stopped.
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
         }
     }
 }

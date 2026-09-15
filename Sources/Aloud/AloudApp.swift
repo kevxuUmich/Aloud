@@ -1,5 +1,6 @@
 import AloudUI
 import AppKit
+import Kokoro
 import Prose
 import Speech
 import SwiftUI
@@ -38,9 +39,18 @@ struct AloudApp: App {
         if let file = Self.sayFile { Task { @MainActor in try? await Self.say(file) } }
         // One model, built into a local and handed to both: reading `_model.wrappedValue`
         // in the second initialiser would capture a `self` that is not initialised yet.
+        // One provider for the player and the picker, two engines behind it. `--silent`
+        // keeps the fake alone, so UI work never touches audio or the model store.
         let m = MainActor.assumeIsolated {
-            AppModel(
-                provider: Self.args.contains("--silent") ? FakeVoiceProvider() : AppleVoiceProvider())
+            if Self.args.contains("--silent") {
+                return AppModel(provider: FakeVoiceProvider())
+            }
+            let store = KokoroStore(
+                paths: .standard(), release: KokoroRelease.current, downloader: URLSessionKokoroDownloader())
+            let kokoro = KokoroVoiceProvider(store: store)
+            let composite = CompositeVoiceProvider(
+                primary: AppleVoiceProvider(), secondary: kokoro, secondaryPrefix: KokoroCatalogue.prefix)
+            return AppModel(provider: composite, kokoro: kokoro)
         }
         _model = State(initialValue: m)
         _clipboardPanel = State(initialValue: MainActor.assumeIsolated { ClipboardPanelController(model: m) })
