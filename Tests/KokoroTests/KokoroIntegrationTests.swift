@@ -9,6 +9,10 @@ import Testing
 /// Serialized: three engines loading and predicting at once fight over the same GPU and
 /// the same Core ML compiler, and the wall clocks below are the point of the suite. Run
 /// in parallel the short sentence read thirty seconds rather than a fifth of one.
+/// `.serialized` reaches this suite's own cases and no further, so the numbers here are
+/// trustworthy only when this suite is what is running: `swift test --filter`, not a
+/// whole-package run with `ALOUD_KOKORO_BUNDLE` set, where it is scheduled beside every
+/// other suite again.
 @Suite(.serialized) struct KokoroIntegrationTests {
     static var bundle: URL? {
         ProcessInfo.processInfo.environment["ALOUD_KOKORO_BUNDLE"].map { URL(fileURLWithPath: $0) }

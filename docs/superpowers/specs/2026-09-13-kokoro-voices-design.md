@@ -48,8 +48,9 @@ Checked against the SDK's source, not its README.
 - Settings gains a row under the Voice picker: the installed version and size with a Remove button, or a Download button when absent.
 - Play with a Kokoro voice picked: the first sentence begins within about half a second, and playback is otherwise what it is today, with the sentence highlight following the sentence being spoken.
 - Rate, volume and pauses work.
-A volume change applies to the sentence being played at once, with no new audio.
-A rate change mid-sentence re-speaks that sentence from its start rather than from the current word, since there is no current word, and above 2x the model's speed is capped at 2 with an `AVAudioUnitTimePitch` covering the rest.
+  A volume change applies to the sentence being played at once, with no new audio.
+  Above 2x the model's speed is capped at 2 with an `AVAudioUnitTimePitch` covering the rest, so a change among the speeds at or above 2x applies to the sentence being played at once as well.
+  A rate change that needs audio the engine has not rendered re-speaks that sentence from its start rather than from the current word, since there is no current word.
 - If the model is removed while a Kokoro voice is picked, the player falls back to the system voice with the notice the app already shows for a removed Apple voice.
 - The README gains one sentence under the voices bullet and one under the line that says Aloud sends nothing off your Mac: Kokoro voices are a one-time download from Aloud's own releases and run entirely on the Mac afterwards.
 
@@ -182,7 +183,7 @@ A Swift script in `Tools/`, run as `make kokoro-bundle`, builds the archive atta
 ## Checks during implementation
 
 - Speed above 2x is not passed straight to the model.
-The model saturates near 2.3x, so the provider caps the model's speed at 2 and covers the rest with an `AVAudioUnitTimePitch` on the playback engine.
+  The model saturates near 2.3x, so the provider caps the model's speed at 2 and covers the rest with an `AVAudioUnitTimePitch` on the playback engine.
 - The kokoro-coreml SDK is young. The forks pin exact revisions, and nothing is vendored until a pin has to be worked around.
 
 ## Out of scope
