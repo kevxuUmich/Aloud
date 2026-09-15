@@ -235,6 +235,43 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(await engine.calls.last == .init(text: "Three.", voice: "af_bella", speed: 2))
     }
 
+    /// The player hands over sentence 2 the instant it asks for sentence 1, and on the
+    /// first sentence of a reading the models are still loading. The request is
+    /// remembered rather than dropped, so the very first boundary is a cache hit.
+    @Test func aPrepareBeforeTheModelsAreLoadedIsNotLost() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        await engine.holdLoad()
+        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        p.prepare("Two.", voice: bella, rate: .x1)
+        #expect(await eventually { await engine.loads.count == 1 })
+        #expect(await engine.calls.isEmpty)
+        await engine.releaseLoad()
+        #expect(await eventually { await engine.calls.count == 2 })
+        #expect(await engine.calls.map(\.text) == ["One.", "Two."])
+        #expect(playback.played.count == 1)
+    }
+
+    /// The engine is one actor, so a prefetch started while the reader's own sentence is
+    /// being rendered puts that sentence behind it. The prefetch waits for the sentence
+    /// in the air and then runs, once.
+    @Test func aPrefetchWaitsForTheSentenceBeingSpoken() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        await engine.hold()
+        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await eventually { await engine.calls.count == 1 })
+        p.prepare("Two.", voice: bella, rate: .x1)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await engine.calls.count == 1)
+        await engine.release()
+        #expect(await until { playback.played.count == 1 })
+        #expect(await eventually { await engine.calls.count == 2 })
+        #expect(await engine.calls.map(\.text) == ["One.", "Two."])
+    }
+
     /// A sentence that phonemizes to nothing finishes silently and on time, so a stray
     /// symbol never stalls a reading.
     @Test func nothingToSayFinishesSilently() async throws {

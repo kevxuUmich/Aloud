@@ -38,6 +38,16 @@ public final class KokoroVoiceProvider: VoiceProvider {
     private(set) var previewTask: Task<Void, Never>?
     /// The one sentence rendered ahead.
     private var prepared: (key: CacheKey, task: Task<[Float]?, Never>)?
+    /// A `prepare` that could not be started when it arrived, kept until it can be.
+    /// Two moments drop it otherwise: the models are still loading, which is every
+    /// first sentence of a reading, and the sentence the reader is waiting on is still
+    /// being rendered. The engine is one actor, so a prefetch started then would put
+    /// that sentence behind it, and the SDK honours cancellation only between chunks.
+    private var pendingPrepare: (text: String, voice: Voice, rate: Rate)?
+    /// How many renders the reader is waiting on are in flight. A prefetch starts only
+    /// at zero. Counted rather than flagged because `speak` bumps it before its task
+    /// runs, so the `prepare` the player hands over on the same turn already sees it.
+    private var rendering = 0
 
     /// Keyed on what the engine was asked for, not on the `Rate`: every speed at or
     /// above `KokoroEngine.maxSpeed` is one rendering, so changing from 2.25x to 3x
@@ -86,7 +96,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
             finish(after: pause, generation: gen, onFinish)
             return
         }
+        rendering += 1
         speakTask = Task {
+            defer { finishedRendering() }
             if !isLoaded {
                 warm()
                 await warmTask?.value
@@ -113,15 +125,32 @@ public final class KokoroVoiceProvider: VoiceProvider {
     }
 
     public func prepare(_ text: String, voice: Voice?, rate: Rate) {
-        guard isLoaded, let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else { return }
-        let speed = Self.split(rate).engine
-        let key = CacheKey(text: text, voice: kokoro.kokoroID, speed: speed)
+        guard let voice, let kokoro = KokoroCatalogue.voice(for: voice.id) else { return }
+        let key = CacheKey(text: text, voice: kokoro.kokoroID, speed: Self.split(rate).engine)
         if prepared?.key == key { return }
+        guard isLoaded, rendering == 0 else {
+            pendingPrepare = (text, voice, rate)
+            return
+        }
         prepared?.task.cancel()
         let engine = engine
         prepared = (
-            key, Task { try? await engine.synthesize(text, voice: kokoro.kokoroID, speed: speed) }
+            key, Task { try? await engine.synthesize(text, voice: key.voice, speed: key.speed) }
         )
+    }
+
+    /// A render the reader was waiting on has returned, been cancelled, or given up.
+    /// The prefetch that was held off for it goes now.
+    private func finishedRendering() {
+        rendering -= 1
+        startPendingPrepare()
+    }
+
+    /// The prefetch that was waiting for the models or for the reader's own sentence.
+    private func startPendingPrepare() {
+        guard isLoaded, rendering == 0, let pending = pendingPrepare else { return }
+        pendingPrepare = nil
+        prepare(pending.text, voice: pending.voice, rate: pending.rate)
     }
 
     public func stop() {
@@ -129,6 +158,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         generation += 1
         prepared?.task.cancel()
         prepared = nil
+        pendingPrepare = nil
         playback.stop()
     }
 
@@ -139,7 +169,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
         generation += 1
         let gen = generation
         guard let kokoro = KokoroCatalogue.voice(for: voice.id) else { return }
+        rendering += 1
         previewTask = Task {
+            defer { finishedRendering() }
             if !isLoaded {
                 warm()
                 await warmTask?.value
@@ -189,6 +221,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
             }
             isWarming = false
             warmTask = nil
+            // The prepare the player handed over for sentence 2 while this load was in
+            // flight: it was kept rather than dropped, and this is where it is issued.
+            startPendingPrepare()
         }
     }
 
