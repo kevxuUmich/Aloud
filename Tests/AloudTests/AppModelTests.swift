@@ -794,4 +794,46 @@ import Vault
             #expect(model.player.isPlaying)
         }
     }
+
+    /// Switching from a Kokoro voice to an Apple one mid-sentence: the sentence in the
+    /// air is dropped by the unload and never reports itself finished, so the player
+    /// would sit playing in silence. It is spoken again in the voice now picked.
+    @Test func switchingAwayFromKokoroMidSentenceSpeaksItAgain() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.hold()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.player.play()
+            try await poll { apple.spoken.isEmpty == false || kokoro.speakTask != nil }
+            #expect(apple.spoken.isEmpty)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "fake" }))
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
+        }
+    }
+
+    /// Removing the model mid-sentence is the same drop: the player falls back to the
+    /// system voice and says the sentence again rather than reading Playing over silence.
+    @Test func removingTheModelMidSentenceSpeaksItAgain() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.hold()
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+            model.player.play()
+            try await poll { apple.spoken.isEmpty == false || kokoro.speakTask != nil }
+            #expect(apple.spoken.isEmpty)
+            model.removeKokoro()
+            #expect(model.player.voice?.id == "fake")
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(model.player.isPlaying)
+        }
+    }
 }

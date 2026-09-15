@@ -216,10 +216,7 @@ final class AppModel {
             self.player.revalidateVoice()
             // The sentence the failed engine could not speak was reported finished
             // silently, so it is spoken again, in the voice that is now the player's.
-            if self.player.isPlaying {
-                self.player.pause()
-                self.player.play()
-            }
+            self.respeakCurrentSentence()
             self.notice = "Kokoro voices could not be loaded: \(message). Using the system voice."
         }
         kokoro?.store.onInstalled = { [weak self] in
@@ -246,7 +243,17 @@ final class AppModel {
             kokoro?.warm()
         } else {
             kokoro?.unload()
+            respeakCurrentSentence()
         }
+    }
+
+    /// A Kokoro sentence that was in the air has been dropped rather than finished, so
+    /// nothing will call the player back and it would sit reading Playing over silence.
+    /// The sentence is spoken again in whatever voice the player now holds.
+    private func respeakCurrentSentence() {
+        guard player.isPlaying else { return }
+        player.pause()
+        player.play()
     }
 
     /// Starts the one download. `voice` is the row that was clicked, picked once the
@@ -267,6 +274,7 @@ final class AppModel {
         kokoro?.unload()
         kokoroStore?.remove()
         player.revalidateVoice()
+        respeakCurrentSentence()
     }
 
     /// The one writer of `player.rate` after init, for the same reason.
