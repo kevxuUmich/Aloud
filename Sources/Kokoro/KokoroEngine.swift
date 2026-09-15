@@ -164,10 +164,20 @@ public actor KokoroEngine: KokoroSynthesizing {
             // the main actor and this call can reach the actor with an `unload` already
             // waiting behind it. Yielding lets anything enqueued run, and then this asks
             // the same question the slow path asks at its own suspension point: is the
-            // model this is about to report still the current one? Without it the
-            // provider would set `isLoaded` over a model that is about to go, and every
-            // sentence after that would finish silently with nothing spoken and no warm
-            // to recover, because `warm()` will not run again while `isLoaded` is true.
+            // model this is about to report still the current one? What it is guarding
+            // against is the provider setting `isLoaded` over a model that is about to
+            // go, after which every sentence would finish silently with nothing spoken
+            // and no warm to recover, because `warm()` will not run again while
+            // `isLoaded` is true.
+            //
+            // This narrows that window; it does not close it. `Task.yield()` gives up
+            // the actor once, which is not a promise that an `unload` the provider has
+            // not yet enqueued will run during it, and one that arrives after this
+            // returns leaves the same inconsistency. Closing it means the provider
+            // sending its load and its unload down one ordered chain rather than as two
+            // unstructured tasks, which is a change to `KokoroVoiceProvider` rather than
+            // to this actor, and a known follow-up rather than something this guard has
+            // already done.
             let epoch = loadEpoch
             await Task.yield()
             guard tts != nil, epoch == loadEpoch else { throw KokoroEngineError.cancelled }

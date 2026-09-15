@@ -55,8 +55,12 @@ public final class CompositeVoiceProvider: VoiceProvider {
     }
 
     /// A preview from one engine may be what interrupts speech from the other, so both
-    /// are told.
+    /// are told. Nothing is being spoken afterwards, so the routing for `setVolume` and
+    /// `setRate` goes back to the primary, whose answer is false: those two carry no
+    /// voice of their own, and an engine that answered yes to one of them while silent
+    /// would have the player believe the reader had heard a change nobody made.
     public func stop() {
+        speaking = nil
         primary.stop()
         secondary.stop()
     }

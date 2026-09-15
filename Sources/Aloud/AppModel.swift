@@ -211,12 +211,18 @@ final class AppModel {
         }
         kokoro?.onLoadFailure = { [weak self] message in
             guard let self else { return }
+            // Read before `revalidateVoice`, which can reach back into the provider.
+            let waiting = self.kokoro?.isWaitingOnLoad == true
             // The provider's list is empty now; the player's own check falls back and
             // posts its own notice, which this one then says more about.
             self.player.revalidateVoice()
             // The sentence the failed engine could not speak was reported finished
             // silently, so it is spoken again, in the voice that is now the player's.
-            self.respeakCurrentSentence()
+            // Only if there was one: a Kokoro voice picked mid-sentence starts this warm
+            // without stopping the system voice's sentence, which is still being spoken
+            // and must not be rewound. The provider is what knows which of the two it is,
+            // because by now `player.voice` is the Kokoro voice either way.
+            if waiting { self.respeakCurrentSentence() }
             self.notice = "Kokoro voices could not be loaded: \(message). Using the system voice."
         }
         kokoro?.store.onInstalled = { [weak self] in

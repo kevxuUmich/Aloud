@@ -54,7 +54,8 @@ public final class KokoroStore {
     /// True when this launch found a model from a version this build cannot load and
     /// swept it. The reader had those voices until a moment ago, so this is not the same
     /// as never having downloaded: the app model turns it into the download they already
-    /// consented to when they picked the voice. Cleared when that download installs.
+    /// consented to when they picked the voice. Cleared when that download installs, and
+    /// when the reader answers it by removing the model instead.
     public private(set) var needsUpdate = false
 
     public let paths: KokoroPaths
@@ -183,6 +184,9 @@ public final class KokoroStore {
 
     public func remove() {
         generation += 1
+        // The reader was told an update was needed and has answered by removing the
+        // model instead. That is an answer, so the flag stops asking.
+        needsUpdate = false
         installTask?.cancel()
         // A remove during a download is still a remove: the transfer stops and its bytes go.
         if case .downloading = state {

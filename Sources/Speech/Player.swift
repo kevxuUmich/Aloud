@@ -26,7 +26,15 @@ public final class Player {
             timeline = Timeline(script: script, rate: rate, pauses: pauses)
             sentenceOffset = sentenceOffset * oldValue.factor / rate.factor
             guard isPlaying else { return }
-            if provider.setRate(rate) { return }
+            if provider.setRate(rate) {
+                // The clock runs from an instant, not from the offset, so the rescale
+                // above survives only if that instant moves with it. The re-speak path
+                // below gets this for free from `speakCurrent`; nothing else does, and
+                // without it the next tick reads the wall time since the sentence began
+                // as seconds at the new rate and the bar jumps to the end of it.
+                if sentenceAnchor != nil { sentenceAnchor = .now - sentenceOffset }
+                return
+            }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }

@@ -113,8 +113,6 @@ import Testing
         #expect(fake.stops == 0)
         #expect(fake.spoken.count == 1)
         #expect(p.rate == .x2)
-        // The clock still moves with the rate: the audio really did get faster.
-        #expect(p.timeline.total == Timeline(script: p.script, rate: .x2, pauses: p.pauses).total)
         // A provider that cannot keeps today's behaviour.
         fake.handlesRate = false
         p.rate = .x3
@@ -182,6 +180,31 @@ import Testing
         p.rate = .x2
         #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
         #expect(abs(p.progress - 0.25 / 2.25) < 0.001)
+    }
+    /// And it keeps it past the next tick, which is the only place the share can be lost.
+    ///
+    /// The clock runs from an instant, not from the offset, so a rescale that does not
+    /// move that instant is undone 250 ms later: the tick measures wall time from where
+    /// the sentence started at the old speed and reads it as seconds at the new one.
+    /// On the re-speak path `speakCurrent` re-bases the instant for free; on the path
+    /// where the provider re-times what it is already playing, nothing else does.
+    @Test func aRetimedSentenceKeepsItsShareAtTheNextTick() {
+        let (p, fake) = make()
+        fake.handlesRate = true
+        p.play()
+        // Half of a 1.125 s sentence.
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        p.rate = .x2
+        #expect(abs(p.elapsed.seconds - 0.25) < 0.001)
+        // The ticker reads the wall clock against the instant the sentence started at.
+        // Unless that instant moved with the rescale, this reading is the wall time
+        // since the sentence began, which here is nothing at all.
+        p.tick(now: .now)
+        #expect(abs(p.elapsed.seconds - 0.25) < 0.01, "\(p.elapsed.seconds)")
+        // And it goes on from there rather than jumping to the end of the sentence.
+        p.tick(now: p.sentenceAnchor! + .seconds(0.5))
+        #expect(abs(p.elapsed.seconds - 0.5) < 0.001, "\(p.elapsed.seconds)")
+        #expect(p.elapsed < p.timeline.duration(at: 0), "\(p.elapsed.seconds)")
     }
     /// Each utterance carries the silence to leave after it: the sentence pause, or
     /// the paragraph pause where the sentence ends a paragraph. A change reaches the

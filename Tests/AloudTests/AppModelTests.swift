@@ -915,6 +915,32 @@ import Vault
         }
     }
 
+    /// A Kokoro voice picked mid-sentence takes at the next sentence, so the system
+    /// voice's sentence goes on being spoken while the models load. If that load fails,
+    /// the reader is told and the next sentence is the system voice's, but the one they
+    /// are listening to is not cut and started again: no sentence of the failed engine's
+    /// was ever in the air.
+    @Test func aLoadFailureDuringAnAppleSentenceDoesNotRestartIt() async throws {
+        try await withKokoroModel { model, kokoro, store, _, apple, engine in
+            try install(store)
+            await store.start()
+            await engine.setFailLoad("no metal")
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.player.play()
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+
+            model.pickVoice(try #require(model.provider.voices.first { $0.id == "kokoro.af_bella" }))
+            await kokoro.warmTask?.value
+
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(apple.stops == 0)
+            #expect(model.player.isPlaying)
+            #expect(model.notice == "Kokoro voices could not be loaded: no metal. Using the system voice.")
+            #expect(model.player.voice?.id == "fake")
+        }
+    }
+
     /// Switching from a Kokoro voice to an Apple one mid-sentence: the sentence in the
     /// air is dropped by the unload and never reports itself finished, so the player
     /// would sit playing in silence. It is spoken again in the voice now picked.

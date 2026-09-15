@@ -97,6 +97,25 @@ import Testing
         #expect(a.stops == 1 && k.stops == 1)
     }
 
+    /// Nothing is being spoken after a stop, so neither of the two questions that carry
+    /// no voice of their own is routed to the engine that was last speaking. Both fall
+    /// back to the primary and both answer no, whatever the second engine would have
+    /// said: a yes here would have the player believe the reader heard a change that
+    /// reached no audio at all.
+    @Test func nothingIsRetunedAfterAStop() {
+        let (c, _, k) = make()
+        k.handlesVolume = true
+        k.handlesRate = true
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setVolume(0.5))
+        #expect(c.setRate(.x3))
+        c.stop()
+        #expect(!c.setVolume(0.4))
+        #expect(!c.setRate(.x2))
+        #expect(k.volumesSet == [0.5])
+        #expect(k.ratesSet == [.x3])
+    }
+
     @Test func refreshReachesBothAndAChangeInEitherShows() {
         let (c, a, k) = make()
         c.refreshVoices()

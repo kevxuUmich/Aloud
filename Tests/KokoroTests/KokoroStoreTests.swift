@@ -384,6 +384,22 @@ final class SpaceMeter: @unchecked Sendable {
         #expect(!store.needsUpdate)
     }
 
+    /// Removing the model is an answer to "an update is needed" too, so the flag stops
+    /// asking for that as well as for the install.
+    @Test func removingTheModelAnswersTheUpdate() async throws {
+        let (_, release) = try makeArchive()
+        let (store, _, paths) = try make(release: release)
+        let fm = FileManager.default
+        try fm.createDirectory(at: paths.modelDirectory(version: "0"), withIntermediateDirectories: true)
+        try Data().write(to: paths.marker(version: "0"))
+
+        await store.start()
+        #expect(store.needsUpdate)
+        store.remove()
+        #expect(!store.needsUpdate)
+        #expect(store.state == .absent)
+    }
+
     /// The pinned version being installed is not an update: the older folder is swept
     /// as before and nothing is asked of the reader.
     @Test func anOlderVersionBesideThePinnedOneIsJustSwept() async throws {

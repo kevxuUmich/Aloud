@@ -19,6 +19,13 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// True while the models load; the picker draws it as a spinner on the picked row.
     public private(set) var isWarming = false
     public private(set) var isLoaded = false
+    /// True while a sentence this provider was asked to speak is waiting on the models
+    /// to load. It is what tells the app model, when a load fails, whether the audio the
+    /// reader can hear right now is this engine's dropped sentence or another engine's
+    /// sentence that is still being spoken: a Kokoro voice picked mid-sentence starts the
+    /// warm without stopping the sentence already in the air, because a pick takes at the
+    /// next sentence.
+    public private(set) var isWaitingOnLoad = false
     /// Called with one sentence when the models fail to load. The list is empty until
     /// the next warm, so the player falls back through its own check.
     public var onLoadFailure: (@MainActor (String) -> Void)?
@@ -117,7 +124,11 @@ public final class KokoroVoiceProvider: VoiceProvider {
             defer { finishedRendering() }
             if !isLoaded {
                 warm(voice)
+                // Set before the await and cleared after it, both without suspending in
+                // between, so a failure reported from inside that warm sees it.
+                isWaitingOnLoad = true
                 await warmTask?.value
+                isWaitingOnLoad = false
             }
             guard gen == generation else { return }
             // The warm failed. The sentence still has to be reported finished or the
