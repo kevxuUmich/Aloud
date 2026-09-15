@@ -46,37 +46,40 @@ import Testing
     /// temporary directory to measure a machine that has never loaded the bundle.
     ///
     /// Measured 2026-09-15 on an Apple M2 Pro, 16 GB, macOS 26.2, release build, this
-    /// test run on its own, with the four-bucket bundle and `KokoroEngine.computePolicy`:
+    /// test run on its own, with the four-bucket bundle and `KokoroEngine.computePolicy`.
+    /// Two consecutive runs, which agreed to within 30 ms on every settled line:
     ///
-    ///     load and first prewarm   1.66 s
+    ///     load and first prewarm   5.60 - 5.72 s
     ///
     ///     audio    speed   first   second   third
-    ///     2.750 s    1x    1.64     1.03     0.99      (settled, later: 0.159)
-    ///     1.475 s    2x    0.164    0.158    0.158
-    ///     7.875 s    1x    0.371    0.533    0.367
-    ///     4.450 s    2x    0.309    0.273    0.274
-    ///     13.14 s    1x    0.738    0.721    0.707
-    ///     7.315 s    2x    0.600    0.633    0.699
+    ///     2.750 s    1x    0.72     0.96     1.03      settled later: 0.24
+    ///     1.475 s    2x    0.234    0.235    0.234
+    ///     7.875 s    1x    0.434    0.435    0.431
+    ///     4.450 s    2x    0.353    0.345    0.347
+    ///     13.16 s    1x    0.941    0.925    0.936
+    ///     7.315 s    2x    0.819    0.833    0.823
     ///
-    /// The short sentence's first three calls overlap the 7, 10 and 15 second buckets
-    /// still warming behind `load`; the same sentence once they are done takes 0.159 s,
-    /// which is the "settled" line the test prints last. So the wait that design costs a
-    /// reader who presses Play the instant the model reports ready is about a second,
-    /// once, and nothing after it.
+    /// The short sentence's first three calls at 1x are the only ones that move: they
+    /// overlap the 3, 10 and 15 second buckets still warming behind `load`, and once
+    /// those are done the same sentence takes 0.24 s, which is the "settled" line the
+    /// test prints last. Everything else repeats to within a few milliseconds from its
+    /// first call, because `load` has already warmed the bucket it lands in.
+    ///
+    /// So the cost of the prewarm design, to a reader who presses Play the instant the
+    /// model reports ready, is about 0.8 seconds on one sentence, once. Measured in the
+    /// app rather than here, that reader waits 0.31 to 0.36 s from pressing Play to the
+    /// audio device starting, of which 0.28 to 0.32 s is this call.
     ///
     /// The same machine the first time it ever loads this bundle under this policy: load
-    /// and first prewarm 44.0 s, then 3.7 / 1.8 / 1.0 s for the short sentence. That is
-    /// Core ML compiling and specialising the graphs, and macOS caches it per machine and
-    /// per compute policy. Running the whole gated suite re-pays it, because the other
-    /// two cases each build a throwaway compiled-model cache, which is why this suite is
-    /// serialized and why these numbers were taken with the test run on its own.
+    /// and first prewarm about 40 s. That is Core ML specialising the graphs, macOS
+    /// caches it per machine and per compute policy, and it is why `KokoroEngine`
+    /// chooses the policy that pays it there rather than on the reader's first sentence.
     ///
     /// Task 11 measured 8.3 to 9.2 s for a 2.75 to 4.3 s sentence on this machine, with
-    /// the one-bucket bundle and the same compute policy the app passes today. Neither
-    /// half of that reproduces now: the one-bucket bundle settles at 0.498 s here. The
-    /// old number was the Core ML specialisation above, paid on every process because the
-    /// measurement never reached a settled state. The four buckets are worth a real 3.2x
-    /// on top: 0.498 s to 0.159 s for a short sentence.
+    /// the one-bucket bundle and the SDK's default compute policy. Both halves of that
+    /// are gone: the buckets are worth about 3x on a short sentence, and the policy is
+    /// worth the rest and, more to the point, the difference between a first sentence
+    /// that answers in 0.8 s and one that answers in 1.4 to 4.1 s.
     @Test(.enabled(if: KokoroIntegrationTests.bundle != nil))
     func theWallClockOfASentenceIsRecorded() async throws {
         let root = try #require(Self.bundle)
