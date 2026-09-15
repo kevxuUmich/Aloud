@@ -123,4 +123,17 @@ import Testing
             Set(KokoroInputs.expectedTreeDigests.keys)
                 == Set(KokoroInputs.packages.map { "coreml/\($0).mlpackage" }))
     }
+
+    /// Every URL is built from its base and the pinned path: the first entry from the
+    /// Hugging Face base, the last from the SDK's raw GitHub base.
+    @Test func theURLsAreBuiltFromTheBases() {
+        #expect(
+            KokoroInputs.all[0].url.absoluteString
+                == "https://huggingface.co/mattmireles/kokoro-coreml/resolve/9b6c8dbcf1209eedb554ca2fe98e947948061638/coreml/kokoro_duration_t128.mlpackage/Manifest.json"
+        )
+        #expect(
+            KokoroInputs.all.last!.url.absoluteString
+                == "https://raw.githubusercontent.com/kevinxu-cmd/kokoro-coreml/2932a26444b8deba2a6be6c0aa45c0424efaefe1/swift-tts/Sources/KokoroTTS/Resources/KokoroRuntime/hnsf_weights.json"
+        )
+    }
 }

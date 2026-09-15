@@ -1,7 +1,7 @@
 APP := .build/Aloud.app
 BIN := .build/debug/Aloud
 
-.PHONY: dev watch gallery build bundle icon test check clean
+.PHONY: dev watch gallery build bundle icon kokoro-bundle kokoro-release test check clean
 
 dev: build bundle
 	@pkill -x Aloud || true
@@ -27,6 +27,24 @@ bundle:
 # target has it without a build step; run this again when the export changes.
 icon:
 	swift Tools/icon.swift $(CURDIR)
+
+# The Kokoro model bundle the app downloads on first use: pinned inputs in, one Apple
+# Archive and its checksum out, under .build/kokoro-bundle. The first run downloads
+# about 180 MB; later runs reuse the verified inputs.
+KOKORO_VERSION := 1
+KOKORO_OUT := .build/kokoro-bundle
+
+kokoro-bundle:
+	swift run -c release kokoro-bundle --version $(KOKORO_VERSION) --out $(KOKORO_OUT)
+
+# Attaches the archive to the kokoro-models release on the Aloud repo, creating the
+# release the first time. The release is its own tag so the model does not churn with
+# app releases. Needs `gh` logged in with push rights.
+kokoro-release: kokoro-bundle
+	gh release view kokoro-models >/dev/null 2>&1 || gh release create kokoro-models \
+		--title "Kokoro models" \
+		--notes "The Kokoro voice models Aloud downloads on first use. Built by make kokoro-bundle from pinned Hugging Face inputs; the .sha256 sidecar is what the app checks."
+	gh release upload kokoro-models $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256 --clobber
 
 # The command-line-tools-only toolchain ships Testing.framework outside the
 # default framework search path, and its Foundation cross-import overlay has no
