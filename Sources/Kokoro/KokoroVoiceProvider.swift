@@ -26,6 +26,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// Bumped by `stop`, `speak` and `preview`, so a completion from an earlier sentence
     /// is ignored.
     private var generation = 0
+    /// Bumped by `warm` and `unload`. A load that an unload overtook must not report
+    /// itself loaded, nor clear the bookkeeping of the warm that came after it.
+    private var warmGeneration = 0
     private(set) var speakTask: Task<Void, Never>?
     private(set) var pauseTask: Task<Void, Never>?
     private(set) var warmTask: Task<Void, Never>?
@@ -55,7 +58,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
     }
     /// The default is always the system's; a Kokoro voice is a choice.
     public nonisolated var defaultVoice: Voice? { nil }
-    public nonisolated func refreshVoices() {}
+    /// The picker opening asks again, so a load that failed once does not hide the
+    /// voices for the rest of the session.
+    public nonisolated func refreshVoices() { loadFailed.set(false) }
 
     public func speak(
         _ text: String, voice: Voice?, rate: Rate, pause: Duration, volume: Double,
@@ -65,7 +70,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         generation += 1
         let gen = generation
         guard let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else {
-            onFinish()
+            finish(after: pause, generation: gen, onFinish)
             return
         }
         speakTask = Task {
@@ -73,7 +78,14 @@ public final class KokoroVoiceProvider: VoiceProvider {
                 warm()
                 await warmTask?.value
             }
-            guard gen == generation, isLoaded else { return }
+            guard gen == generation else { return }
+            // The warm failed. The sentence still has to be reported finished or the
+            // reading stalls here; the app model's own check falls back to the system
+            // voice and speaks it again.
+            guard isLoaded else {
+                finish(after: pause, generation: gen, onFinish)
+                return
+            }
             let samples = await samples(for: text, voice: kokoro, rate: rate)
             guard gen == generation else { return }
             guard let samples, !samples.isEmpty else {
@@ -132,20 +144,34 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// and at launch when the saved voice is one.
     public func warm() {
         guard !isLoaded, warmTask == nil, let root = store.installedRoot else { return }
+        // A fresh attempt: whatever the last one concluded is no longer the answer, so
+        // the voices are back until this one says otherwise.
+        loadFailed.set(false)
         isWarming = true
+        warmGeneration += 1
+        let epoch = warmGeneration
         let cache = store.compiledCache
         let engine = engine
         warmTask = Task {
+            var failure: String?
+            var cancelled = false
             do {
                 try await engine.load(root: root, cache: cache)
+            } catch KokoroEngineError.cancelled {
+                cancelled = true
+            } catch {
+                failure = (error as? KokoroEngineError).map(Self.text) ?? error.localizedDescription
+            }
+            // An unload, or a newer warm, overtook this load: its answer is stale, and
+            // the bookkeeping below is the later attempt's to write.
+            guard epoch == warmGeneration else { return }
+            if let failure {
+                loadFailed.set(true)
+                log.error("Kokoro failed to load: \(failure, privacy: .public)")
+                onLoadFailure?(failure)
+            } else if !cancelled {
                 isLoaded = true
                 loadFailed.set(false)
-            } catch KokoroEngineError.cancelled {
-            } catch {
-                loadFailed.set(true)
-                let message = (error as? KokoroEngineError).map(Self.text) ?? error.localizedDescription
-                log.error("Kokoro failed to load: \(message, privacy: .public)")
-                onLoadFailure?(message)
             }
             isWarming = false
             warmTask = nil
@@ -155,6 +181,9 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// Gives the memory back. Picking an Apple voice calls it.
     public func unload() {
         stop()
+        // Past the epoch before the cancel: a load already through the SDK cannot be
+        // cancelled, and this is what stops it reporting itself loaded afterwards.
+        warmGeneration += 1
         warmTask?.cancel()
         warmTask = nil
         isWarming = false
@@ -171,6 +200,10 @@ public final class KokoroVoiceProvider: VoiceProvider {
             self.prepared = nil
             return await prepared.task.value
         }
+        // A miss: the sentence rendered ahead is not the one being read, and the reader
+        // has moved past it, so it is not worth keeping or finishing.
+        prepared?.task.cancel()
+        prepared = nil
         do {
             return try await engine.synthesize(text, voice: voice.kokoroID, speed: rate.factor)
         } catch KokoroEngineError.cancelled {

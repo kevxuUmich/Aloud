@@ -14,9 +14,15 @@ actor FakeEngine: KokoroSynthesizing {
     var failSynthesis: KokoroEngineError?
     var gate: CheckedContinuation<Void, Never>?
     var holdNext = false
+    var loadGate: CheckedContinuation<Void, Never>?
+    var holdLoadNext = false
 
     func load(root: URL, cache: URL) async throws {
         loads.append(root)
+        if holdLoadNext {
+            holdLoadNext = false
+            await withCheckedContinuation { loadGate = $0 }
+        }
         if let failLoad { throw KokoroEngineError.load(failLoad) }
     }
     func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float] {
@@ -35,6 +41,12 @@ actor FakeEngine: KokoroSynthesizing {
         gate = nil
     }
     func hold() { holdNext = true }
+    /// The same for the load, so a test can unload while the models are still arriving.
+    func holdLoad() { holdLoadNext = true }
+    func releaseLoad() {
+        loadGate?.resume()
+        loadGate = nil
+    }
     func setFailLoad(_ s: String?) { failLoad = s }
     func setFailSynthesis(_ e: KokoroEngineError?) { failSynthesis = e }
 }
@@ -49,10 +61,9 @@ actor FakeEngine: KokoroSynthesizing {
         played.append(Played(samples: samples, volume: volume))
         self.completion = completion
     }
-    func stop() {
-        stops += 1
-        completion = nil
-    }
+    /// Counts the stop and keeps the completion: a real player can call back after one,
+    /// and it must be the provider's own generation guard that swallows it.
+    func stop() { stops += 1 }
     func finish() {
         let c = completion
         completion = nil
@@ -294,6 +305,59 @@ actor FakeEngine: KokoroSynthesizing {
         await engine.setFailLoad(nil)
         p.warm()
         await p.warmTask?.value
+        #expect(p.voices.count == 7)
+    }
+
+    /// An unload while the models are still arriving wins: the load that lands after it
+    /// does not report itself loaded, and it does not clear the warm that comes next.
+    @Test func unloadDuringWarmLeavesTheProviderUnloaded() async throws {
+        let (p, engine, _, _, store) = try make()
+        await store.start()
+        await engine.holdLoad()
+        p.warm()
+        #expect(await eventually { await engine.loads.count == 1 })
+        let stale = p.warmTask
+        p.unload()
+        await engine.releaseLoad()
+        await stale?.value
+        #expect(!p.isLoaded)
+        #expect(!p.isWarming)
+        #expect(p.warmTask == nil)
+        // The next warm is a load of its own, not a no-op behind the stale one.
+        p.warm()
+        await p.warmTask?.value
+        #expect(await engine.loads.count == 2)
+        #expect(p.isLoaded)
+    }
+
+    /// A load that fails still finishes the sentence, so a reading never stalls on it;
+    /// the app model's own check is what falls back to the system voice.
+    @Test func aFailedWarmStillFinishesTheSentence() async throws {
+        let (p, engine, playback, held, store) = try make()
+        await store.start()
+        await engine.setFailLoad("no metal")
+        var finished = 0
+        p.speak(
+            "One.", voice: bella, rate: .x1, pause: .milliseconds(50), volume: 1, onWord: { _ in },
+            onFinish: { finished += 1 })
+        #expect(await until { held.asked.count == 1 })
+        held.release()
+        await p.pauseTask?.value
+        #expect(finished == 1)
+        #expect(playback.played.isEmpty)
+        #expect(!p.isLoaded)
+    }
+
+    /// The picker opening asks again, so a load that failed once does not hide the
+    /// voices for the rest of the session.
+    @Test func refreshVoicesClearsALoadFailure() async throws {
+        let (p, engine, _, _, store) = try make()
+        await store.start()
+        await engine.setFailLoad("no metal")
+        p.warm()
+        await p.warmTask?.value
+        #expect(p.voices.isEmpty)
+        p.refreshVoices()
         #expect(p.voices.count == 7)
     }
 
