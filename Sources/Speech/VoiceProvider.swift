@@ -22,10 +22,17 @@ public protocol VoiceProvider: AnyObject, Sendable {
     /// and rate may then start without a gap. The system voice needs no warning and
     /// takes the default, which does nothing.
     @MainActor func prepare(_ text: String, voice: Voice?, rate: Rate)
+    /// Applies a new level to whatever is being spoken now. True when the provider did,
+    /// so the caller has nothing more to do; false when it cannot, and the caller has to
+    /// speak the sentence again to be heard. An engine that queues an utterance cannot
+    /// re-level it; one that owns a player node can, and for it a re-speak would mean a
+    /// whole re-synthesis for a parameter that needs no new audio.
+    @MainActor func setVolume(_ volume: Double) -> Bool
 }
 
 extension VoiceProvider {
     @MainActor public func prepare(_ text: String, voice: Voice?, rate: Rate) {}
+    @MainActor public func setVolume(_ volume: Double) -> Bool { false }
 }
 
 /// The sentence every provider previews. One line, so the whole set can be auditioned

@@ -7,6 +7,8 @@ public protocol KokoroPlaying: AnyObject {
     /// `rate` is the time stretch to apply on the way out, which is how a speed the
     /// model cannot deliver is made up. 1 is the samples as they were rendered.
     func play(_ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void)
+    /// The level of whatever is playing, changed where it stands. Nothing is re-rendered.
+    func setVolume(_ volume: Double)
     func stop()
 }
 
@@ -74,6 +76,8 @@ public final class KokoroPlayback: KokoroPlaying {
         }
         node.play()
     }
+
+    public func setVolume(_ volume: Double) { node.volume = Self.level(volume) }
 
     public func stop() {
         generation += 1

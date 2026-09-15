@@ -20,6 +20,10 @@ public final class FakeVoiceProvider: VoiceProvider {
     public private(set) var prepared: [Prepared] = []
     public private(set) var stops = 0
     public private(set) var previewed: [Voice] = []
+    /// What `setVolume` was asked for, and whether it claims to have applied it. False
+    /// is the system voice's answer; true is an engine that owns its player node.
+    public private(set) var volumesSet: [Double] = []
+    public var handlesVolume = false
     private var onWord: (@MainActor (NSRange) -> Void)?
     private var onFinish: (@MainActor () -> Void)?
     /// The set is a lock-guarded value rather than a main-actor property because the
@@ -50,6 +54,10 @@ public final class FakeVoiceProvider: VoiceProvider {
         prepared.append(Prepared(text: text, voice: voice, rate: rate))
     }
     public func preview(_ voice: Voice) { previewed.append(voice) }
+    public func setVolume(_ volume: Double) -> Bool {
+        volumesSet.append(volume)
+        return handlesVolume
+    }
     public func stop() {
         stops += 1
         onWord = nil

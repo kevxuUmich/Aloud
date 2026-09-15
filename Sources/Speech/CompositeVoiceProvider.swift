@@ -9,6 +9,10 @@ public final class CompositeVoiceProvider: VoiceProvider {
     private let primary: any VoiceProvider
     private let secondary: any VoiceProvider
     private let secondaryPrefix: String
+    /// The voice the last `speak` or `preview` was routed by. `setVolume` carries no
+    /// voice of its own and applies to whatever is being spoken, so this is how it
+    /// reaches the same engine that is speaking rather than both of them.
+    private var speaking: Voice?
 
     public nonisolated init(primary: any VoiceProvider, secondary: any VoiceProvider, secondaryPrefix: String)
     {
@@ -32,15 +36,21 @@ public final class CompositeVoiceProvider: VoiceProvider {
         _ text: String, voice: Voice?, rate: Rate, pause: Duration, volume: Double,
         onWord: @escaping @MainActor (NSRange) -> Void, onFinish: @escaping @MainActor () -> Void
     ) {
+        speaking = voice
         provider(for: voice).speak(
             text, voice: voice, rate: rate, pause: pause, volume: volume, onWord: onWord, onFinish: onFinish)
     }
+
+    public func setVolume(_ volume: Double) -> Bool { provider(for: speaking).setVolume(volume) }
 
     public func prepare(_ text: String, voice: Voice?, rate: Rate) {
         provider(for: voice).prepare(text, voice: voice, rate: rate)
     }
 
-    public func preview(_ voice: Voice) { provider(for: voice).preview(voice) }
+    public func preview(_ voice: Voice) {
+        speaking = voice
+        provider(for: voice).preview(voice)
+    }
 
     /// A preview from one engine may be what interrupts speech from the other, so both
     /// are told.

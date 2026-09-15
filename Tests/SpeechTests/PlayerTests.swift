@@ -79,6 +79,26 @@ import Testing
         p.volume = 0.2
         #expect(fake.spoken.count == 2)
     }
+    /// A provider that can re-level what it is already playing is asked first, and when
+    /// it says it has, nothing is spoken again: on the Kokoro engine a re-speak is a
+    /// whole re-synthesis, and volume is the one parameter that needs no new audio.
+    @Test func aProviderThatRelevelsIsNotAskedToSpeakAgain() {
+        let (p, fake) = make()
+        fake.handlesVolume = true
+        p.play()
+        fake.word(NSRange(location: 4, length: 3))
+        p.volume = 0.5
+        #expect(fake.volumesSet == [0.5])
+        #expect(fake.stops == 0)
+        #expect(fake.spoken.count == 1)
+        #expect(p.volume == 0.5)
+        // A provider that cannot keeps today's behaviour.
+        fake.handlesVolume = false
+        p.volume = 0.2
+        #expect(fake.stops == 1)
+        #expect(fake.spoken.count == 2)
+        #expect(fake.spoken.last?.volume == 0.2)
+    }
     /// The level is clamped to what the synthesizer accepts.
     @Test func volumeIsClampedToTheUnitRange() {
         let (p, _) = make()

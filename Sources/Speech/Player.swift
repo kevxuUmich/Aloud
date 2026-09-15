@@ -30,9 +30,11 @@ public final class Player {
         }
     }
     /// The level the sentences are spoken at, 0 to 1, apart from the system volume.
-    /// A change while speaking is heard now, the way a rate change is: the utterance in
-    /// the air was queued at the old level, so the rest of the sentence is spoken again
-    /// from the word reached. The clock is untouched, since the timing has not changed.
+    /// A change while speaking is heard now. The provider is asked to re-level what it
+    /// is already playing, and only when it cannot is the rest of the sentence spoken
+    /// again from the word reached, the way a rate change is: an utterance queued with
+    /// a system voice cannot be re-levelled. The clock is untouched either way, since
+    /// the timing has not changed.
     ///
     /// Computed over `level` rather than observed on itself: `@Observable` makes a
     /// stored property an accessor pair, and a clamp written back from `didSet` would
@@ -44,6 +46,7 @@ public final class Player {
             guard clamped != level else { return }
             level = clamped
             guard isPlaying else { return }
+            if provider.setVolume(clamped) { return }
             stopSpeaking()
             speakCurrent(from: currentWordStart, offset: sentenceOffset)
         }

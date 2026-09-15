@@ -100,6 +100,8 @@ actor FakeEngine: KokoroSynthesizing {
         played.append(Played(samples: samples, volume: volume, rate: rate))
         self.completion = completion
     }
+    var volumes: [Double] = []
+    func setVolume(_ volume: Double) { volumes.append(volume) }
     /// Counts the stop and keeps the completion: a real player can call back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }

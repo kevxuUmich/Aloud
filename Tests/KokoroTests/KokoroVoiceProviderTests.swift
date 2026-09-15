@@ -63,6 +63,8 @@ actor FakeEngine: KokoroSynthesizing {
         played.append(Played(samples: samples, volume: volume, rate: rate))
         self.completion = completion
     }
+    var volumes: [Double] = []
+    func setVolume(_ volume: Double) { volumes.append(volume) }
     /// Counts the stop and keeps the completion: a real player can call back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }
@@ -289,6 +291,30 @@ actor FakeEngine: KokoroSynthesizing {
         await p.pauseTask?.value
         #expect(finished == 1)
         #expect(playback.played.isEmpty)
+    }
+
+    /// A level change reaches the node that is playing and asks the engine for nothing:
+    /// dragging the slider must not re-render the sentence.
+    @Test func setVolumeReachesThePlaybackWithoutTheEngine() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        p.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        #expect(p.setVolume(0.25))
+        #expect(playback.volumes == [0.25])
+        #expect(await engine.calls.count == 1)
+        #expect(playback.played.count == 1)
+        // A change made while the next sentence is still rendering is heard on that
+        // sentence too, not only on the one after it.
+        await engine.hold()
+        p.speak("Two.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await eventually { await engine.calls.count == 2 })
+        #expect(p.setVolume(0.5))
+        await engine.release()
+        #expect(await until { playback.played.count == 2 })
+        #expect(playback.played.last?.volume == 0.5)
     }
 
     /// A preview interrupts whatever is playing and speaks the preview sentence at 1x in

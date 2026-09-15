@@ -44,6 +44,10 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// being rendered. The engine is one actor, so a prefetch started then would put
     /// that sentence behind it, and the SDK honours cancellation only between chunks.
     private var pendingPrepare: (text: String, voice: Voice, rate: Rate)?
+    /// The level the reader last chose. `speak` is handed one with the sentence, but a
+    /// change made while that sentence is still being rendered would otherwise be heard
+    /// only from the sentence after it, which on this engine is seconds away.
+    private var level = 1.0
     /// How many renders the reader is waiting on are in flight. A prefetch starts only
     /// at zero. Counted rather than flagged because `speak` bumps it before its task
     /// runs, so the `prepare` the player hands over on the same turn already sees it.
@@ -91,6 +95,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
     ) {
         cancelCurrent()
         generation += 1
+        level = volume
         let gen = generation
         guard let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else {
             finish(after: pause, generation: gen, onFinish)
@@ -117,7 +122,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
                 finish(after: pause, generation: gen, onFinish)
                 return
             }
-            playback.play(samples, volume: volume, rate: Self.split(rate).stretch) { [weak self] in
+            playback.play(samples, volume: level, rate: Self.split(rate).stretch) { [weak self] in
                 guard let self, gen == self.generation else { return }
                 self.finish(after: pause, generation: gen, onFinish)
             }
@@ -151,6 +156,14 @@ public final class KokoroVoiceProvider: VoiceProvider {
         guard isLoaded, rendering == 0, let pending = pendingPrepare else { return }
         pendingPrepare = nil
         prepare(pending.text, voice: pending.voice, rate: pending.rate)
+    }
+
+    /// The level of the sentence being played, changed where it stands: this engine owns
+    /// its player node, so a re-speak would be a whole re-synthesis for nothing.
+    public func setVolume(_ volume: Double) -> Bool {
+        level = volume
+        playback.setVolume(volume)
+        return true
     }
 
     public func stop() {

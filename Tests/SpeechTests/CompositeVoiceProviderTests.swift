@@ -54,6 +54,25 @@ import Testing
         #expect(a.previewed.map(\.id) == ["com.apple.voice.samantha"])
     }
 
+    /// A level change belongs to whichever engine is speaking, and only one of them is.
+    /// Asking both would let the silent one answer for the one that is playing, and the
+    /// player takes a true for "the reader has heard it".
+    @Test func setVolumeGoesToTheEngineThatIsSpeaking() {
+        let (c, a, k) = make()
+        k.handlesVolume = true
+        // Before anything is spoken there is nothing to re-level, and the default
+        // routing is the system's, which cannot.
+        #expect(!c.setVolume(0.5))
+        c.speak("One.", voice: bella, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(c.setVolume(0.4))
+        #expect(k.volumesSet == [0.4])
+        #expect(a.volumesSet == [0.5])
+        c.speak("Two.", voice: apple, rate: .x1, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(!c.setVolume(0.3))
+        #expect(a.volumesSet == [0.5, 0.3])
+        #expect(k.volumesSet == [0.4])
+    }
+
     /// A preview from one engine may be interrupting speech from the other, so a stop
     /// reaches both.
     @Test func stopReachesBoth() {
