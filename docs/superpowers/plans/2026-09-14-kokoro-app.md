@@ -24,7 +24,7 @@ Plan 1 produced the forks and plan 2 the archive this plan downloads.
 - Files live at `Application Support/Aloud/Kokoro/<version>/` and `Caches/Aloud/Kokoro/<version>/`, the latter excluded from backup. Both are the app's own directories.
 - The SDK is loaded with `KokoroTTS.load(resources: .directory(root, compiledModelsDirectory: cache))`; `KokoroError` is not `Sendable` and never crosses an actor boundary; the provider maps it.
 - Kokoro voices highlight the sentence, never the word: `onWord` is never called.
-- Copy is exactly the spec's: section header `Kokoro`; caption `Seven voices, one download of about 165 MB, runs on your Mac.` (the number is the archive size from plan 2 rounded to the nearest 5 MB); buttons `Cancel`, `Retry`, `Download`, `Remove`; failure sentences `No internet connection.`, `The download did not match what Aloud expected.`, `Not enough disk space.`
+- Copy is exactly the spec's: section header `Kokoro`; caption `Seven voices, one download of about 160 MB, runs on your Mac.` (the number is the archive size from plan 2 rounded to the nearest 5 MB); buttons `Cancel`, `Retry`, `Download`, `Remove`; failure sentences `No internet connection.`, `The download did not match what Aloud expected.`, `Not enough disk space.`
 - The network client entitlement `com.apple.security.network.client` is added to `App/Aloud.entitlements` and to the entitlements block in `project.yml`, which states the sandbox keys twice on purpose.
 - Every commit passes `make check` and `make test`. No em dash in any file (plain dash). One sentence per line in Markdown. No co-author line in commits.
 - Commit messages follow the repo's form: a sentence in the present tense, or a lower-case `docs:` prefix for documentation.
@@ -743,13 +743,13 @@ public enum KokoroRelease {
     public static let current = KokoroReleaseInfo(
         url: URL(string: "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar")!,
         version: "1",
-        sha256: "SHA256_FROM_PLAN_2",
-        bytes: BYTES_FROM_PLAN_2)
+        sha256: "c70f436d665855f507f2fe828097b24baf30a508ba2ea5cb45f6da0dac7d6ca5",
+        bytes: 159_237_319)
 }
 ```
 
-The two capitalised values are the ones plan 2's Task 5 printed as `sha256:` and `bytes:`; they are also `curl -sL https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar.sha256` and `gh release view kokoro-models --json assets -q '.assets[] | select(.name=="kokoro-1.aar") | .size'`.
-Fill them in before building; the test refuses a placeholder.
+The two values are the ones plan 2 published (its Task 5 printed them as `sha256:` and `bytes:`); they are also `curl -sL https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-1.aar.sha256` and `gh release view kokoro-models --json assets -q '.assets[] | select(.name=="kokoro-1.aar") | .size'`.
+They are already filled in above; the test refuses a placeholder.
 
 Create `Sources/Kokoro/KokoroPaths.swift`:
 
@@ -1279,7 +1279,7 @@ public final class KokoroStore {
     }
 
     /// Checksum, extract, move into place, mark. Off the main actor: the archive is
-    /// 165 MB and the reader's window must not freeze for it.
+    /// 159 MB and the reader's window must not freeze for it.
     private func install() {
         state = .installing
         let gen = generation
@@ -1430,7 +1430,7 @@ Create `Sources/Kokoro/URLSessionKokoroDownloader.swift`:
 ```swift
 import Foundation
 
-/// The real downloader: one background `URLSession`, so the 165 MB keeps arriving with
+/// The real downloader: one background `URLSession`, so the 159 MB keeps arriving with
 /// the window closed and even with the app quit, and a launch that finds the task still
 /// running picks it up. Delegate callbacks arrive on the session's queue and are hopped
 /// to the main actor; the finished file is moved before the callback returns, as the
@@ -2386,12 +2386,12 @@ git commit -m "A Kokoro voice provider: rendered ahead, played, paused and guard
 public enum Motion { public static let opaque: Double = 1 }          // added
 public enum Copy {                                                     // new namespace
   static let kokoroSection = "Kokoro"
-  static let kokoroCaption = "Seven voices, one download of about 165 MB, runs on your Mac."
+  static let kokoroCaption = "Seven voices, one download of about 160 MB, runs on your Mac."
   static let kokoroInstalling = "Installing"
   static let cancel = "Cancel"; retry = "Retry"; download = "Download"; remove = "Remove"
   static let kokoroSettingsLabel = "Kokoro voices"
   static let kokoroAbsent = "Not downloaded"
-  static func kokoroInstalled(version: String, size: String) -> String   // "Version 1, 168 MB"
+  static func kokoroInstalled(version: String, size: String) -> String   // "Version 1, 159 MB"
 }
 // VoiceRow gains two props with defaults:
 isBusy: Bool = false      // a spinner in place of the play icon
@@ -2426,7 +2426,7 @@ import Testing
         #expect(Copy.kokoroCaption.hasPrefix("Seven voices, one download of about "))
         #expect(Copy.kokoroCaption.hasSuffix(" MB, runs on your Mac."))
         #expect(Copy.cancel == "Cancel" && Copy.retry == "Retry" && Copy.download == "Download" && Copy.remove == "Remove")
-        #expect(Copy.kokoroInstalled(version: "1", size: "168 MB") == "Version 1, 168 MB")
+        #expect(Copy.kokoroInstalled(version: "1", size: "159 MB") == "Version 1, 159 MB")
     }
 
     @Test func aBusyOrDimmedRowBuilds() {
@@ -2435,7 +2435,7 @@ import Testing
             onPreview: {}, onPick: {}
         ).body
         _ = VoiceRow(
-            name: "Bella", region: "United States", quality: "Premium", badge: "168 MB", isSelected: false,
+            name: "Bella", region: "United States", quality: "Premium", badge: "159 MB", isSelected: false,
             isInstalled: false, isDimmed: true, onPreview: {}, onPick: {}
         ).body
         #expect(Gallery.sections.contains("DownloadBanner"))
@@ -2467,7 +2467,7 @@ Add at the end of the file:
 /// adds to live here, beside the sizes, so the words can be read in one place.
 public enum Copy {
     public static let kokoroSection = "Kokoro"
-    public static let kokoroCaption = "Seven voices, one download of about 165 MB, runs on your Mac."
+    public static let kokoroCaption = "Seven voices, one download of about 160 MB, runs on your Mac."
     public static let kokoroInstalling = "Installing"
     public static let cancel = "Cancel"
     public static let retry = "Retry"
@@ -2625,7 +2625,7 @@ In `Sources/AloudUI/Gallery.swift`, add `"DownloadBanner"` to `sections` after `
                             isSelected: true, isBusy: true, onPreview: {}, onPick: {})
                         VoiceRow(
                             name: "Fable", region: "United Kingdom", quality: "Premium",
-                            badge: "168 MB", isSelected: false, isInstalled: false, isDimmed: true,
+                            badge: "159 MB", isSelected: false, isInstalled: false, isDimmed: true,
                             onPreview: {}, onPick: {})
 ```
 
@@ -2749,7 +2749,7 @@ Add to `Tests/AloudTests/AppModelTests.swift`, inside the suite:
             #expect(store.state == .downloading(0))
             #expect(model.pendingKokoroPick?.id == "kokoro.bm_fable")
             // The store's install needs a real archive; a marker written by hand and a
-            // direct completion stand in for the 165 MB.
+            // direct completion stand in for the 159 MB.
             try FileManager.default.createDirectory(at: store.paths.modelDirectory(version: "1"), withIntermediateDirectories: true)
             try Data().write(to: store.paths.marker(version: "1"))
             await store.start()
