@@ -4,7 +4,8 @@ import os
 
 /// The second engine behind the protocol the player speaks through. The voices are the
 /// catalogue when the model is installed and nothing otherwise; a sentence is rendered
-/// by the engine and played by the player; the next one is rendered ahead.
+/// by the engine chunk by chunk and each chunk is played as it lands; the next sentence
+/// is rendered ahead.
 /// Observable because the picker draws `isWarming` as a spinner on the row it belongs
 /// to: without it the spinner appears on the pick that renders it and then stays until
 /// something else redraws the list.
@@ -43,36 +44,41 @@ public final class KokoroVoiceProvider: VoiceProvider {
     private(set) var pauseTask: Task<Void, Never>?
     private(set) var warmTask: Task<Void, Never>?
     private(set) var previewTask: Task<Void, Never>?
-    /// The one sentence rendered ahead.
-    private var prepared: (key: CacheKey, task: Task<[Float]?, Never>)?
-    /// A `prepare` that could not be started when it arrived, kept until it can be.
-    /// Two moments drop it otherwise: the models are still loading, which is every
-    /// first sentence of a reading, and the sentence the reader is waiting on is still
-    /// being rendered. The engine is one actor, so a prefetch started then would put
-    /// that sentence behind it, and the SDK honours cancellation only between chunks.
+    /// The sentence in the air, and the one rendered ahead of it.
+    private var current: SentenceRender?
+    private var prepared: SentenceRender?
+    /// The last render made, whatever became of it. The engine is one actor and the SDK
+    /// runs a whole chunk without suspending, so every render is chained after the one
+    /// before it; this is the one the next is chained after.
+    private var lastRender: SentenceRender?
+    /// A `prepare` that arrived while the models were still loading, which is every
+    /// first sentence of a reading, kept until the sentence waiting on that load has its
+    /// render, so that it is chained after it and not before it.
     private var pendingPrepare: (text: String, voice: Voice, rate: Rate)?
     /// The voice the buckets are warmed in: whatever was last picked, previewed or
     /// spoken, and the catalogue's first before any of those.
     private var warmVoice = KokoroCatalogue.voices[0].kokoroID
-    /// The speed the sentence being spoken was rendered and is being played at, or nil
-    /// when nothing is. `setRate` compares against it to decide whether the samples in
-    /// hand can be played at a new speed, and `speak` plays at it so a change made while
-    /// a sentence was still rendering is heard on that sentence rather than the next.
+    /// The speed the engine rendered the sentence in the air at, or nil when nothing is.
+    /// A speed change is heard by stretching the rest of that sentence by the reader's
+    /// speed over this one.
+    private var renderedSpeed: Double?
+    /// The reader's speed, kept so a change made while a sentence is still rendering is
+    /// what that sentence is played at when it lands.
     private var rate: Rate?
     /// The level the reader last chose. `speak` is handed one with the sentence, but a
     /// change made while that sentence is still being rendered would otherwise be heard
-    /// only from the sentence after it, which on this engine is seconds away.
+    /// only from the sentence after it.
     private var level = 1.0
-    /// How many renders the reader is waiting on are in flight. A prefetch starts only
-    /// at zero. Counted rather than flagged because `speak` bumps it before its task
-    /// runs, so the `prepare` the player hands over on the same turn already sees it.
-    private var rendering = 0
+
+    /// The silence between two chunks of one sentence: the length of a spoken comma,
+    /// which is what the SDK splits at. The model's own 0.75 s of silence at a seam is
+    /// trimmed off by the engine, and this is what stands in its place.
+    static let seamPause: Duration = .milliseconds(180)
+    static let seam = [Float](repeating: 0, count: Int(seamPause.seconds * KokoroPlayback.sampleRate))
 
     /// Keyed on what the engine was asked for, not on the `Rate`: every speed at or
-    /// above `KokoroEngine.maxSpeed` is one rendering. That is what lets `setRate`
-    /// answer a change from 2.25x to 3x with the playback's time stretch and no
-    /// synthesis at all, and it is why the sentence rendered ahead survives the change
-    /// rather than being cancelled with the one being heard.
+    /// above `KokoroEngine.maxSpeed` is one rendering. A change between two rates that
+    /// share an engine speed leaves the sentence rendered ahead alone.
     struct CacheKey: Equatable {
         let text: String
         let voice: String
@@ -114,14 +120,19 @@ public final class KokoroVoiceProvider: VoiceProvider {
         generation += 1
         level = volume
         self.rate = rate
+        renderedSpeed = nil
+        current?.cancel()
+        current = nil
         let gen = generation
         guard let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else {
             finish(after: pause, generation: gen, onFinish)
             return
         }
-        rendering += 1
+        let key = CacheKey(text: text, voice: kokoro.kokoroID, speed: Self.split(rate).engine)
+        // With the models here, the render is taken or made before this returns, so the
+        // prepare the player hands over on the same turn is chained after it.
+        if isLoaded { start(key) }
         speakTask = Task {
-            defer { finishedRendering() }
             if !isLoaded {
                 warm(voice)
                 // Set before the await and cleared after it, both without suspending in
@@ -129,54 +140,115 @@ public final class KokoroVoiceProvider: VoiceProvider {
                 isWaitingOnLoad = true
                 await warmTask?.value
                 isWaitingOnLoad = false
+                guard gen == generation else { return }
+                // The warm failed. The sentence still has to be reported finished or the
+                // reading stalls here; the app model's own check falls back to the system
+                // voice and speaks it again.
+                guard isLoaded else {
+                    finish(after: pause, generation: gen, onFinish)
+                    return
+                }
+                start(key)
+                // The prepare the player handed over for the next sentence while this
+                // load was in flight: it was kept rather than dropped, and now that this
+                // sentence's render is made, it goes behind it.
+                startPendingPrepare()
             }
+            guard gen == generation, let render = current else { return }
+            await play(render, pause: pause, generation: gen, onFinish)
+        }
+    }
+
+    /// The render for the sentence about to be spoken: the one made ahead when it is
+    /// this sentence, else a new one. Either way it is the sentence in the air from here.
+    private func start(_ key: CacheKey) {
+        if let prepared, prepared.key == key {
+            self.prepared = nil
+            current = prepared
+        } else {
+            prepared?.cancel()
+            prepared = nil
+            current = make(key)
+        }
+        renderedSpeed = key.speed
+    }
+
+    /// A render chained after the last one made.
+    private func make(_ key: CacheKey) -> SentenceRender {
+        let render = SentenceRender(key: key, engine: engine, after: lastRender)
+        lastRender = render
+        return render
+    }
+
+    /// Plays one sentence's render: each chunk is queued the moment it is rendered, with
+    /// the seam after every one but the last, and the sentence is finished, after its
+    /// pause, once every queued buffer has been heard. A chunk that failed or had nothing
+    /// to say is skipped, so the rest of the sentence is still heard; a sentence with no
+    /// chunk to hear finishes silently, so the reading never stalls.
+    private func play(
+        _ render: SentenceRender, pause: Duration, generation gen: Int,
+        _ onFinish: @escaping @MainActor () -> Void
+    ) async {
+        playback.setVolume(level)
+        playback.setRate(stretch)
+        let chunks = await render.chunks ?? []
+        guard gen == generation else { return }
+        let tally = Tally()
+        for i in chunks.indices {
+            let samples = await render.samples(ofChunk: i)
             guard gen == generation else { return }
-            // The warm failed. The sentence still has to be reported finished or the
-            // reading stalls here; the app model's own check falls back to the system
-            // voice and speaks it again.
-            guard isLoaded else {
-                finish(after: pause, generation: gen, onFinish)
-                return
-            }
-            let samples = await samples(for: text, voice: kokoro, rate: rate)
-            guard gen == generation else { return }
-            guard let samples, !samples.isEmpty else {
-                finish(after: pause, generation: gen, onFinish)
-                return
-            }
-            playback.play(samples, volume: level, rate: Self.split(self.rate ?? rate).stretch) {
-                [weak self] in
+            guard let samples, !samples.isEmpty else { continue }
+            tally.queued += 1
+            playback.enqueue(i + 1 < chunks.count ? samples + Self.seam : samples) { [weak self] in
                 guard let self, gen == self.generation else { return }
-                self.finish(after: pause, generation: gen, onFinish)
+                tally.heard += 1
+                self.finishIfHeard(tally, after: pause, generation: gen, onFinish)
             }
         }
+        tally.allQueued = true
+        finishIfHeard(tally, after: pause, generation: gen, onFinish)
+    }
+
+    /// How much of a sentence has been queued and heard. A class so the completions and
+    /// the loop that queues them share one count.
+    @MainActor private final class Tally {
+        var queued = 0
+        var heard = 0
+        var allQueued = false
+    }
+
+    private func finishIfHeard(
+        _ tally: Tally, after pause: Duration, generation gen: Int,
+        _ onFinish: @escaping @MainActor () -> Void
+    ) {
+        guard tally.allQueued, tally.heard == tally.queued else { return }
+        finish(after: pause, generation: gen, onFinish)
+    }
+
+    /// The reader's speed over the speed the sentence in the air was rendered at. 1 while
+    /// nothing is in the air.
+    private var stretch: Double {
+        guard let renderedSpeed, let rate else { return 1 }
+        return rate.factor / renderedSpeed
     }
 
     public func prepare(_ text: String, voice: Voice?, rate: Rate) {
         guard let voice, let kokoro = KokoroCatalogue.voice(for: voice.id) else { return }
         let key = CacheKey(text: text, voice: kokoro.kokoroID, speed: Self.split(rate).engine)
         if prepared?.key == key { return }
-        guard isLoaded, rendering == 0 else {
+        // Not loaded yet, or a sentence is waiting on that load: the render for that
+        // sentence is not made until the load lands, and this must go behind it.
+        guard isLoaded, !isWaitingOnLoad else {
             pendingPrepare = (text, voice, rate)
             return
         }
-        prepared?.task.cancel()
-        let engine = engine
-        prepared = (
-            key, Task { try? await engine.synthesize(text, voice: key.voice, speed: key.speed) }
-        )
+        prepared?.cancel()
+        prepared = make(key)
     }
 
-    /// A render the reader was waiting on has returned, been cancelled, or given up.
-    /// The prefetch that was held off for it goes now.
-    private func finishedRendering() {
-        rendering -= 1
-        startPendingPrepare()
-    }
-
-    /// The prefetch that was waiting for the models or for the reader's own sentence.
+    /// The prefetch that was waiting for the models.
     private func startPendingPrepare() {
-        guard isLoaded, rendering == 0, let pending = pendingPrepare else { return }
+        guard isLoaded, let pending = pendingPrepare else { return }
         pendingPrepare = nil
         prepare(pending.text, voice: pending.voice, rate: pending.rate)
     }
@@ -189,16 +261,21 @@ public final class KokoroVoiceProvider: VoiceProvider {
         return true
     }
 
-    /// The speed of the sentence being played, changed where it stands when the samples
-    /// in hand can be played at it: above `KokoroEngine.maxSpeed` the engine was asked
-    /// for the cap and the rest is the playback's time stretch, so every speed from 2x
-    /// up shares one rendering and a change among them needs no new audio. Anything else
-    /// is false, and the player speaks the sentence again, which is the only way to hear
-    /// a speed the engine has not rendered.
+    /// The speed of the sentence in the air, changed where it stands: the rest of it is
+    /// stretched on the playback by the new speed over the one it was rendered at, so
+    /// nothing is stopped, rendered again or rewound. The next sentence is rendered at
+    /// the new speed; the one already rendered ahead is rendered again at it now, unless
+    /// the two speeds ask the engine for the same thing, which every speed past the cap
+    /// does. False only while nothing is in the air, when there is nothing to stretch.
     public func setRate(_ new: Rate) -> Bool {
-        guard let rate, Self.split(rate).engine == Self.split(new).engine else { return false }
-        self.rate = new
-        playback.setRate(Self.split(new).stretch)
+        guard let renderedSpeed else { return false }
+        rate = new
+        playback.setRate(new.factor / renderedSpeed)
+        if let prepared, prepared.key.speed != Self.split(new).engine {
+            prepared.cancel()
+            self.prepared = make(
+                CacheKey(text: prepared.key.text, voice: prepared.key.voice, speed: Self.split(new).engine))
+        }
         return true
     }
 
@@ -206,7 +283,10 @@ public final class KokoroVoiceProvider: VoiceProvider {
         cancelCurrent()
         generation += 1
         rate = nil
-        prepared?.task.cancel()
+        renderedSpeed = nil
+        current?.cancel()
+        current = nil
+        prepared?.cancel()
         prepared = nil
         pendingPrepare = nil
         playback.stop()
@@ -219,20 +299,22 @@ public final class KokoroVoiceProvider: VoiceProvider {
         generation += 1
         let gen = generation
         guard let kokoro = KokoroCatalogue.voice(for: voice.id) else { return }
-        rendering += 1
         previewTask = Task {
-            defer { finishedRendering() }
             if !isLoaded {
                 warm(voice)
                 await warmTask?.value
             }
             guard gen == generation, isLoaded else { return }
-            guard let samples = await samples(for: VoicePreview.text, voice: kokoro, rate: .x1),
-                gen == generation
-            else {
-                return
+            let render = make(CacheKey(text: VoicePreview.text, voice: kokoro.kokoroID, speed: 1))
+            playback.setVolume(1)
+            playback.setRate(1)
+            guard let chunks = await render.chunks, gen == generation else { return }
+            for i in chunks.indices {
+                let samples = await render.samples(ofChunk: i)
+                guard gen == generation else { return }
+                guard let samples, !samples.isEmpty else { continue }
+                playback.enqueue(samples) {}
             }
-            playback.play(samples, volume: 1, rate: 1) {}
         }
     }
 
@@ -277,9 +359,10 @@ public final class KokoroVoiceProvider: VoiceProvider {
             }
             isWarming = false
             warmTask = nil
-            // The prepare the player handed over for sentence 2 while this load was in
-            // flight: it was kept rather than dropped, and this is where it is issued.
-            startPendingPrepare()
+            // A prepare kept while this load was in flight. When a sentence is waiting on
+            // this same load, that sentence's own task issues it, after its render is
+            // made; issued here it would be chained in front of that render.
+            if !isWaitingOnLoad { startPendingPrepare() }
         }
     }
 
@@ -297,31 +380,6 @@ public final class KokoroVoiceProvider: VoiceProvider {
         isLoaded = false
         let engine = engine
         Task { await engine.unload() }
-    }
-
-    /// The prepared samples when they are the ones asked for, else a fresh render. A
-    /// failure is logged and comes back nil, which the caller finishes silently.
-    private func samples(for text: String, voice: KokoroVoice, rate: Rate) async -> [Float]? {
-        let speed = Self.split(rate).engine
-        let key = CacheKey(text: text, voice: voice.kokoroID, speed: speed)
-        if let prepared, prepared.key == key {
-            self.prepared = nil
-            return await prepared.task.value
-        }
-        // A miss: the sentence rendered ahead is not the one being read, and the reader
-        // has moved past it, so it is not worth keeping or finishing.
-        prepared?.task.cancel()
-        prepared = nil
-        do {
-            return try await engine.synthesize(text, voice: voice.kokoroID, speed: speed)
-        } catch KokoroEngineError.cancelled {
-            return nil
-        } catch {
-            log.error(
-                "Kokoro could not speak a sentence: \((error as? KokoroEngineError).map(Self.text) ?? error.localizedDescription, privacy: .public)"
-            )
-            return nil
-        }
     }
 
     private func finish(

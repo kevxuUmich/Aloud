@@ -119,17 +119,14 @@ actor FakeEngine: KokoroSynthesizing {
     func setFailTexts(_ texts: Set<String>) { failTexts = texts }
 }
 
-/// Plays nothing and lets the test say when the buffer has been heard.
+/// Plays nothing and lets the test say when each queued buffer has been heard.
 @MainActor final class FakePlayback: KokoroPlaying {
-    struct Played { let samples: [Float]; let volume: Double; let rate: Double }
-    var played: [Played] = []
+    var played: [[Float]] = []
     var stops = 0
-    private var completion: (@MainActor () -> Void)?
-    func play(
-        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
-    ) {
-        played.append(Played(samples: samples, volume: volume, rate: rate))
-        self.completion = completion
+    private var completions: [@MainActor () -> Void] = []
+    func enqueue(_ samples: [Float], completion: @escaping @MainActor () -> Void) {
+        played.append(samples)
+        completions.append(completion)
     }
     var volumes: [Double] = []
     var rates: [Double] = []
@@ -137,12 +134,12 @@ actor FakeEngine: KokoroSynthesizing {
     func setVolume(_ volume: Double) { volumes.append(volume) }
     func setRate(_ rate: Double) { rates.append(rate) }
     func shutdown() { shutdowns += 1 }
-    /// Counts the stop and keeps the completion: a real player can call back after one,
+    /// Counts the stop and keeps the completions: a real player calls back after one,
     /// and it must be the provider's own generation guard that swallows it.
     func stop() { stops += 1 }
+    /// The oldest buffer still queued has been heard.
     func finish() {
-        let c = completion
-        completion = nil
-        c?()
+        guard !completions.isEmpty else { return }
+        completions.removeFirst()()
     }
 }
