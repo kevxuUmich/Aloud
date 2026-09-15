@@ -31,7 +31,7 @@ icon:
 # The Kokoro model bundle the app downloads on first use: pinned inputs in, one Apple
 # Archive and its checksum out, under .build/kokoro-bundle. The first run downloads
 # about 180 MB; later runs reuse the verified inputs.
-KOKORO_VERSION := 1
+KOKORO_VERSION := 2
 KOKORO_OUT := .build/kokoro-bundle
 
 kokoro-bundle:
@@ -44,17 +44,31 @@ kokoro-bundle:
 # --clobber can replace the artefact the app pins by hash, so before uploading this
 # checks whether a differently-checksummed archive is already published under this
 # version and refuses rather than silently replacing what apps in the wild trust.
+#
+# Only a 404 means "nothing is published under this version". A failed request of any
+# other kind - a network drop, a rate limit, a 500 - is not evidence of anything, and
+# falling through it to --clobber would replace an archive apps in the wild pin by hash,
+# so anything that is not 404 or 200 stops the release. The redirect to the asset host
+# is followed, since the release download URL is always a 302.
 kokoro-release: kokoro-bundle
 	gh release view kokoro-models >/dev/null 2>&1 || gh release create kokoro-models \
 		--title "Kokoro models" \
 		--notes "The Kokoro voice models Aloud downloads on first use. Built by make kokoro-bundle from pinned Hugging Face inputs; the .sha256 sidecar is what the app checks."
 	published="$$(mktemp)"; \
-	if curl -sfL "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-$(KOKORO_VERSION).aar.sha256" -o "$$published" \
-		&& [ "$$(awk '{print $$1}' "$$published")" != "$$(awk '{print $$1}' "$(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256")" ]; then \
+	code="$$(curl -sL -o "$$published" -w '%{http_code}' "https://github.com/kevxuUmich/Aloud/releases/download/kokoro-models/kokoro-$(KOKORO_VERSION).aar.sha256")"; \
+	case "$$code" in \
+	404) ;; \
+	200) \
+		if [ "$$(awk '{print $$1}' "$$published")" != "$$(awk '{print $$1}' "$(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256")" ]; then \
+			rm -f "$$published"; \
+			echo "kokoro-$(KOKORO_VERSION).aar is already published with a different checksum; bump KOKORO_VERSION"; \
+			exit 1; \
+		fi ;; \
+	*) \
 		rm -f "$$published"; \
-		echo "kokoro-$(KOKORO_VERSION).aar is already published with a different checksum; bump KOKORO_VERSION"; \
-		exit 1; \
-	fi; \
+		echo "could not read what is published for kokoro-$(KOKORO_VERSION).aar: HTTP $$code"; \
+		exit 1 ;; \
+	esac; \
 	rm -f "$$published"
 	gh release upload kokoro-models $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar $(KOKORO_OUT)/kokoro-$(KOKORO_VERSION).aar.sha256 --clobber
 
