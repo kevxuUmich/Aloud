@@ -32,6 +32,7 @@ public actor KokoroEngine: KokoroSynthesizing {
     public var isLoaded: Bool { tts != nil }
 
     public func load(root: URL, cache: URL) async throws {
+        guard tts == nil else { return }
         do {
             let loaded = try await KokoroTTS.load(resources: .directory(root, compiledModelsDirectory: cache))
             try await loaded.prewarm(text: VoicePreview.text, voice: KokoroVoiceID("af_bella"))
@@ -47,10 +48,10 @@ public actor KokoroEngine: KokoroSynthesizing {
 
     public func synthesize(_ text: String, voice: String, speed: Double) async throws -> [Float] {
         guard let tts else { throw KokoroEngineError.notLoaded }
+        let audio: KokoroAudio
         do {
-            let audio = try await tts.synthesize(
+            audio = try await tts.synthesize(
                 text, voice: KokoroVoiceID(voice), options: KokoroSynthesisOptions(speed: Float(speed)))
-            return audio.samples
         } catch is CancellationError {
             throw KokoroEngineError.cancelled
         } catch KokoroError.synthesisCancelled {
@@ -62,6 +63,10 @@ public actor KokoroEngine: KokoroSynthesizing {
         } catch {
             throw KokoroEngineError.synthesis(error.localizedDescription)
         }
+        guard audio.sampleRate == Int(KokoroPlayback.sampleRate) else {
+            throw KokoroEngineError.synthesis("unexpected sample rate \(audio.sampleRate)")
+        }
+        return audio.samples
     }
 
     public func unload() { tts = nil }

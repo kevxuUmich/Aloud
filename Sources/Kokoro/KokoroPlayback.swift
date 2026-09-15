@@ -9,38 +9,24 @@ public protocol KokoroPlaying: AnyObject {
 }
 
 /// An audio engine with one player node at the model's 24 kHz mono. A new buffer
-/// replaces whatever is playing. The engine is restarted when the output device
-/// changes, so an unplugged headphone set does not leave it silent.
+/// replaces whatever is playing. A device change stops the engine out from under it;
+/// the next `play` restarts it on the new device. The pause on that same change is the
+/// app model's, through `OutputDeviceWatcher`, not this class's.
 @MainActor
 public final class KokoroPlayback: KokoroPlaying {
-    public static let sampleRate: Double = 24000
+    /// Nonisolated so `KokoroEngine`, a plain actor, can check the SDK's output against
+    /// it without crossing to the main actor for a constant.
+    public nonisolated static let sampleRate: Double = 24000
 
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: KokoroPlayback.sampleRate, channels: 1)!
     /// A completion from a buffer that was replaced or stopped is not the current one's.
     private var generation = 0
-    /// A `deinit` is nonisolated even on a `@MainActor` type and cannot read an
-    /// isolated property, so the token is held outside the actor's isolation. It is
-    /// written once, in `init()`, and read once, in `deinit`, so there is no second
-    /// thread to race.
-    private nonisolated(unsafe) var observer: (any NSObjectProtocol)?
 
     public init() {
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        observer = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-        ) { [weak self] _ in
-            // The engine has stopped itself; the next play starts it again with the new
-            // device. Whatever was in the air is lost, and the model pauses on the same
-            // change, so nothing is resumed here.
-            MainActor.assumeIsolated { self?.generation += 1 }
-        }
-    }
-
-    deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     public func play(_ samples: [Float], volume: Double, completion: @escaping @MainActor () -> Void) {
