@@ -54,6 +54,13 @@ import Testing
     /// once they are done takes 0.25 s. So the wait that design costs a reader who
     /// presses Play the instant the model is ready is about half a second, once.
     ///
+    /// The same machine with an empty compiled-model cache, which is a reader's first
+    /// launch after the download and happens once: load and first prewarm 44.1 s, then
+    /// 2.4 s, 1.4 s and 1.0 s for the three sentences. Timed one bucket at a time, the
+    /// prewarms are 45.1 / 2.3 / 3.0 / 0.9 s cold and 5.9 / 0.7 / 0.9 / 0.9 s warm: the
+    /// 45 s is Core ML compiling and specialising the graphs once per machine, and the
+    /// three buckets behind the first cost about a second each afterwards.
+    ///
     /// Task 11 measured 8.3 to 9.2 s for a 2.75 to 4.3 s sentence on this machine, with
     /// the one-bucket bundle and the SDK's default compute policy. Most of that was the
     /// policy: `perf-investigation.md` measured 0.63 s for the short sentence and 0.62 s
