@@ -81,6 +81,9 @@ import Testing
     ///     13.16 s    1x    0.941    0.925    0.936
     ///     7.315 s    2x    0.819    0.833    0.823
     ///
+    /// Taken before renders were trimmed: `Silence.trim` since removes about 0.75 s of
+    /// silence from every render's ends and changes no wall clock.
+    ///
     /// The short sentence's first three calls at 1x are the only ones that move: they
     /// overlap the 3, 10 and 15 second buckets still warming behind `load`, and once
     /// those are done the same sentence takes 0.24 s, which is the "settled" line the
