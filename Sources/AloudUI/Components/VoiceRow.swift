@@ -12,12 +12,14 @@ public struct VoiceRow: View {
     let badge: String?
     let isSelected: Bool
     let isInstalled: Bool
+    let isBusy: Bool
+    let isDimmed: Bool
     let onPreview: () -> Void
     let onPick: () -> Void
 
     public init(
         name: String, region: String?, quality: String, badge: String? = nil,
-        isSelected: Bool, isInstalled: Bool = true,
+        isSelected: Bool, isInstalled: Bool = true, isBusy: Bool = false, isDimmed: Bool = false,
         onPreview: @escaping () -> Void, onPick: @escaping () -> Void
     ) {
         self.name = name
@@ -26,6 +28,8 @@ public struct VoiceRow: View {
         self.badge = badge
         self.isSelected = isSelected
         self.isInstalled = isInstalled
+        self.isBusy = isBusy
+        self.isDimmed = isDimmed
         self.onPreview = onPreview
         self.onPick = onPick
     }
@@ -35,11 +39,20 @@ public struct VoiceRow: View {
 
     public var body: some View {
         HStack(spacing: Space.m) {
-            Button(action: isInstalled ? onPreview : onPick) {
-                Image(systemName: isInstalled ? "play.circle" : "arrow.down.circle")
+            // While the models load for a just-picked voice the play icon gives way to a
+            // spinner; the row is still the row, so its width does not change.
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: Size.icon, height: Size.icon)
+                    .accessibilityLabel("Loading \(name)")
+            } else {
+                Button(action: isInstalled ? onPreview : onPick) {
+                    Image(systemName: isInstalled ? "play.circle" : "arrow.down.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isInstalled ? "Preview \(name)" : "Download \(name)")
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(isInstalled ? "Preview \(name)" : "Download \(name)")
             Button(action: onPick) {
                 HStack(spacing: Space.m) {
                     VStack(alignment: .leading, spacing: Space.xs) {
@@ -65,6 +78,8 @@ public struct VoiceRow: View {
             .accessibilityLabel(Self.pickLabel(name, region, quality, badge, isSelected, isInstalled))
         }
         .padding(.vertical, Space.s)
+        .opacity(isDimmed ? Motion.dimmed : Motion.opaque)
+        .disabled(isDimmed)
     }
 
     /// VoiceOver reads the whole row from the pick button, so the region, quality and

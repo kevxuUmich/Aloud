@@ -156,6 +156,8 @@ public enum Motion {
     /// How long the panel stays when the clipboard has no text: long enough to read
     /// two short lines, not long enough to reach for the mouse.
     public static let emptyPanelHold: Double = 1.6
+    /// Fully drawn: the other end of `dimmed`.
+    public static let opaque: Double = 1
 }
 
 /// The aperture mark: a ring on the superellipse shape law, open at the lower right.
@@ -172,4 +174,21 @@ public enum Mark {
     public static let samples = 360
     /// The turn that brings a flat side of the ring onto the lower-right diagonal.
     public static let turnDegrees: CGFloat = 45
+}
+
+/// The copy the Kokoro section introduces. The spec asks for every string the section
+/// adds to live here, beside the sizes, so the words can be read in one place.
+public enum Copy {
+    public static let kokoroSection = "Kokoro"
+    public static let kokoroCaption = "Seven voices, one download of about 160 MB, runs on your Mac."
+    public static let kokoroInstalling = "Installing"
+    public static let cancel = "Cancel"
+    public static let retry = "Retry"
+    public static let download = "Download"
+    public static let remove = "Remove"
+    public static let kokoroSettingsLabel = "Kokoro voices"
+    public static let kokoroAbsent = "Not downloaded"
+    public static func kokoroInstalled(version: String, size: String) -> String {
+        "Version \(version), \(size)"
+    }
 }
