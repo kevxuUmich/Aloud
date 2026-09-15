@@ -14,10 +14,13 @@ import Vault
 /// Each case gets its own vault directory, its own progress file and its own
 /// `UserDefaults` suite for the root store, so no case can see the reader's real vault
 /// or another case's writes. `Defaults.store` is left alone on purpose: it is a
-/// process-global that `DefaultsTests` already swaps, and `.serialized` orders one
-/// suite's cases rather than two suites against each other, so a second swapper here
-/// would be a race between the two targets. Nothing below writes a setting; the model
-/// only reads the voice, the rate and the skip-code flag at init.
+/// process-global, and swapping it here would swap it for every suite running beside
+/// this one. `pickVoice`, `setRate` and `setVolume` do write a setting, so those three
+/// land in the process-wide store, which under `swift test` is the test binary's own
+/// domain and not the reader's Aloud. That is safe now that `DefaultsTests` binds a
+/// task local rather than swapping the global: the two suites run in parallel, and the
+/// swap used to mean these writes could land in that suite's throwaway store, or its
+/// own writes in this one's.
 @Suite @MainActor struct AppModelTests {
     /// A model that touches nothing of the reader's: no vault roots, since the root
     /// store is pointed at a throwaway suite, and no real progress file.

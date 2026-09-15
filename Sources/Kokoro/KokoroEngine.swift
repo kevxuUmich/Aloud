@@ -60,6 +60,12 @@ public actor KokoroEngine: KokoroSynthesizing {
             throw KokoroEngineError.nothingToSay
         } catch KokoroError.inaudibleChunk {
             throw KokoroEngineError.nothingToSay
+        } catch KokoroPhonemizerError.emptyOutput {
+            // The SDK maps its own text-processing errors onto `KokoroError` but lets
+            // the phonemizer's own emptiness through untouched, so a line of "***" -
+            // a Markdown rule - arrives here rather than as `emptyPhonemizerOutput`.
+            // It is the same nothing, and a reading must not stall on it.
+            throw KokoroEngineError.nothingToSay
         } catch {
             throw KokoroEngineError.synthesis(error.localizedDescription)
         }

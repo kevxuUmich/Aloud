@@ -3,26 +3,19 @@ import Testing
 
 @testable import Vault
 
-/// The store is swapped for a throwaway suite so the tests never touch the real
-/// preferences, and so one key's default cannot be read from another run's write.
+/// A throwaway suite stands in for the real preferences so the tests never touch
+/// them, and so one key's default cannot be read from another run's write.
 ///
-/// `Defaults.store` is a process-global, and swapping it here swaps it for everything
-/// running in this process, which is why this suite is `.serialized` and why every
-/// case puts the old store back on the way out. It is also why this is the only suite
-/// that swaps it: `.serialized` orders one suite's cases and not two suites against
-/// each other, so a second swapper anywhere in the package would read this one's
-/// throwaway suite, and this one would read theirs.
-@Suite(.serialized) struct DefaultsTests {
+/// The suite is bound to `Defaults.overrideStore`, which is a task local, so it is
+/// this case's store and nothing else's. `Defaults.store`, the process-global, is left
+/// exactly as it was: swapping it would swap it for every suite running in parallel,
+/// which is a real race with any other test that writes a setting.
+@Suite struct DefaultsTests {
     func withSuite(_ body: (UserDefaults) throws -> Void) rethrows {
         let name = "design.aloud.tests.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: name)!
-        let previous = Defaults.store
-        Defaults.store = suite
-        defer {
-            Defaults.store = previous
-            suite.removePersistentDomain(forName: name)
-        }
-        try body(suite)
+        defer { suite.removePersistentDomain(forName: name) }
+        try Defaults.$overrideStore.withValue(.init(suite)) { try body(suite) }
     }
 
     @Test func roundTripsEveryKey() throws {

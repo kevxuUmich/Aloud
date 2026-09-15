@@ -54,6 +54,10 @@ public enum Size {
     public static let popoverHeight: CGFloat = 520
     /// The menu-bar panel: the popover's width, so the two read as one control.
     public static let panelWidth: CGFloat = 320
+    /// A download banner's line under its title: two caption lines at the popover's
+    /// width, so the caption, the progress, the install and the failure are one height
+    /// and the rows below them do not move as the download runs.
+    public static let bannerPhaseHeight: CGFloat = 36
     /// The volume slider in the transport bar: long enough to set a level by eye,
     /// short enough to sit beside the speed without crowding it.
     public static let volumeSlider: CGFloat = 88
