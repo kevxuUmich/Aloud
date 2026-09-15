@@ -67,6 +67,16 @@ public actor KokoroEngine: KokoroSynthesizing {
     /// on the ANE cost 280 s of prewarm and left every sentence 5 to 10 times slower.
     static let computePolicy = KokoroComputePolicy.gistDefault
 
+    /// The most speed the model is worth asking for.
+    ///
+    /// The duration model rounds each token's frames and clamps them at one, so a
+    /// sentence can never be shorter than one frame a token: asked for 3 it delivers
+    /// about 2.2, and the ceiling moves with how phoneme-dense the text is. The provider
+    /// asks for at most this and hands the rest to a time stretch on the playback, which
+    /// makes the reader's speed truthful and, because the prefetch is keyed on what the
+    /// engine was asked for, makes every speed at or above it one rendering.
+    public static let maxSpeed = 2.0
+
     /// One sentence per acoustic bucket, in the order a reader meets them.
     ///
     /// The SDK renders a chunk at the fixed shape of the smallest bucket whose seconds

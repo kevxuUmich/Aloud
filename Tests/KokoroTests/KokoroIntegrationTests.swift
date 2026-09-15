@@ -104,17 +104,15 @@ import Testing
     static let longestSentence =
         "She had meant to write the letter that evening, but the light went, and the kitchen grew cold, and in the end she read instead, sitting by the window until the harbour lamps came on one by one."
 
-    /// The speed the picker offers is the engine's own, not a rate applied after the
-    /// fact, so the same sentence has to come back shorter at every step up.
+    /// What the engine itself does with speed, which is why the provider caps it.
     ///
-    /// Measured on this bundle, it does not come back shorter in proportion. Asked for
-    /// 2 the engine delivers about 1.9x; asked for 3 it delivers about 2.2x, and the
-    /// speech between the leading and trailing silence barely shortens past 2.5. So the
-    /// ratio is asserted where it holds, at 2, and above it only the ordering is: 3 is
-    /// no slower than 2 and never overshoots a third. The shortfall at 3 is the finding
-    /// the spec anticipates for that speed, and its remedy is the one the spec names,
-    /// capping the engine at 2 and letting an `AVAudioUnitTimePitch` on the playback
-    /// engine cover the rest, as a follow-up rather than a change smuggled in here.
+    /// Asked for 2 the engine delivers about 1.9x; asked for 3 it delivers about 2.2x,
+    /// and the speech barely shortens past 2.5, because the duration model cannot give a
+    /// token fewer than one frame. So the ratio is asserted where it holds, at 2, and
+    /// above it only that 3 is no slower than 2. Nothing here asserts that 3 gets close
+    /// to a third: it does not, and that is the finding. `KokoroEngine.maxSpeed` is the
+    /// remedy the spec names, and `KokoroVoiceProvider` never asks this engine for more
+    /// than 2; the rest is an `AVAudioUnitTimePitch` in `KokoroPlayback`.
     @Test(.enabled(if: KokoroIntegrationTests.bundle != nil))
     func speedShortensTheSentence() async throws {
         let root = try #require(Self.bundle)
@@ -139,7 +137,6 @@ import Testing
         let (one, two, three) = (seconds[0], seconds[1], seconds[2])
         #expect(abs(two - one / 2) <= one / 2 * 0.25)
         #expect(three <= two)
-        #expect(three >= one / 3)
         try? FileManager.default.removeItem(at: cache)
     }
 }

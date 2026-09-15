@@ -53,12 +53,14 @@ actor FakeEngine: KokoroSynthesizing {
 
 /// Plays nothing and lets the test say when the buffer has been heard.
 @MainActor final class FakePlayback: KokoroPlaying {
-    struct Played { let samples: [Float]; let volume: Double }
+    struct Played { let samples: [Float]; let volume: Double; let rate: Double }
     var played: [Played] = []
     var stops = 0
     private var completion: (@MainActor () -> Void)?
-    func play(_ samples: [Float], volume: Double, completion: @escaping @MainActor () -> Void) {
-        played.append(Played(samples: samples, volume: volume))
+    func play(
+        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
+    ) {
+        played.append(Played(samples: samples, volume: volume, rate: rate))
         self.completion = completion
     }
     /// Counts the stop and keeps the completion: a real player can call back after one,
@@ -360,6 +362,57 @@ actor FakeEngine: KokoroSynthesizing {
         #expect(p.voices.isEmpty)
         p.refreshVoices()
         #expect(p.voices.count == 7)
+    }
+
+    /// Above `KokoroEngine.maxSpeed` the engine is asked for the cap and the playback
+    /// stretches what is left, so 3x is really 3x rather than the 2.2x the model gives.
+    @Test func aRateAboveTheCapIsSplitBetweenTheEngineAndThePlayback() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        p.speak("One.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        #expect(await engine.calls.last?.speed == 2)
+        #expect(playback.played.last?.rate == 1.5)
+        p.speak("Two.", voice: bella, rate: .x15, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 2 })
+        #expect(await engine.calls.last?.speed == 1.5)
+        #expect(playback.played.last?.rate == 1)
+    }
+
+    /// The prize of capping in the provider: every rate at or above the cap is one
+    /// rendering, so a sentence prepared at 2.5x is a hit when it is spoken at 3x and the
+    /// reader's speed change costs no synthesis at all.
+    @Test func ratesAboveTheCapShareOneRendering() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        p.prepare("Two.", voice: bella, rate: .x25)
+        #expect(await eventually { await engine.calls.count == 1 })
+        p.speak("Two.", voice: bella, rate: .x3, pause: .zero, volume: 1, onWord: { _ in }, onFinish: {})
+        #expect(await until { playback.played.count == 1 })
+        #expect(await engine.calls.count == 1)
+        #expect(playback.played.last?.rate == 1.5)
+    }
+
+    /// The cap holds for every speed the picker offers, so no rate can ask the model for
+    /// something it answers by saturating.
+    @Test func theEngineIsNeverAskedForMoreThanTheCap() async throws {
+        let (p, engine, playback, _, store) = try make()
+        await store.start()
+        p.warm()
+        await p.warmTask?.value
+        for (n, rate) in Rate.allCases.enumerated() {
+            p.speak(
+                "\(n).", voice: bella, rate: rate, pause: .zero, volume: 1, onWord: { _ in },
+                onFinish: {})
+            #expect(await until { playback.played.count == n + 1 })
+        }
+        let speeds = await engine.calls.map(\.speed)
+        #expect(speeds.allSatisfy { $0 <= KokoroEngine.maxSpeed }, "\(speeds)")
+        #expect(speeds == Rate.allCases.map { min($0.factor, KokoroEngine.maxSpeed) }, "\(speeds)")
     }
 
     @Test func warmWithNothingInstalledDoesNothing() async throws {

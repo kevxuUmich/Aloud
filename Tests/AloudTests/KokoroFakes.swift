@@ -90,12 +90,14 @@ actor FakeEngine: KokoroSynthesizing {
 
 /// Plays nothing and lets the test say when the buffer has been heard.
 @MainActor final class FakePlayback: KokoroPlaying {
-    struct Played { let samples: [Float]; let volume: Double }
+    struct Played { let samples: [Float]; let volume: Double; let rate: Double }
     var played: [Played] = []
     var stops = 0
     private var completion: (@MainActor () -> Void)?
-    func play(_ samples: [Float], volume: Double, completion: @escaping @MainActor () -> Void) {
-        played.append(Played(samples: samples, volume: volume))
+    func play(
+        _ samples: [Float], volume: Double, rate: Double, completion: @escaping @MainActor () -> Void
+    ) {
+        played.append(Played(samples: samples, volume: volume, rate: rate))
         self.completion = completion
     }
     /// Counts the stop and keeps the completion: a real player can call back after one,

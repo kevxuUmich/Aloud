@@ -39,10 +39,20 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// The one sentence rendered ahead.
     private var prepared: (key: CacheKey, task: Task<[Float]?, Never>)?
 
+    /// Keyed on what the engine was asked for, not on the `Rate`: every speed at or
+    /// above `KokoroEngine.maxSpeed` is one rendering, so changing from 2.25x to 3x
+    /// mid-sentence is a change to the playback's time stretch and no synthesis at all.
     struct CacheKey: Equatable {
         let text: String
         let voice: String
-        let rate: Rate
+        let speed: Double
+    }
+
+    /// What the model is asked for, and what is left for the playback to stretch.
+    /// Below the cap the engine does all of it and the stretch is 1.
+    static func split(_ rate: Rate) -> (engine: Double, stretch: Double) {
+        let engine = min(rate.factor, KokoroEngine.maxSpeed)
+        return (engine, rate.factor / engine)
     }
 
     public init(
@@ -95,7 +105,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
                 finish(after: pause, generation: gen, onFinish)
                 return
             }
-            playback.play(samples, volume: volume) { [weak self] in
+            playback.play(samples, volume: volume, rate: Self.split(rate).stretch) { [weak self] in
                 guard let self, gen == self.generation else { return }
                 self.finish(after: pause, generation: gen, onFinish)
             }
@@ -104,12 +114,13 @@ public final class KokoroVoiceProvider: VoiceProvider {
 
     public func prepare(_ text: String, voice: Voice?, rate: Rate) {
         guard isLoaded, let kokoro = voice.flatMap({ KokoroCatalogue.voice(for: $0.id) }) else { return }
-        let key = CacheKey(text: text, voice: kokoro.kokoroID, rate: rate)
+        let speed = Self.split(rate).engine
+        let key = CacheKey(text: text, voice: kokoro.kokoroID, speed: speed)
         if prepared?.key == key { return }
         prepared?.task.cancel()
         let engine = engine
         prepared = (
-            key, Task { try? await engine.synthesize(text, voice: kokoro.kokoroID, speed: rate.factor) }
+            key, Task { try? await engine.synthesize(text, voice: kokoro.kokoroID, speed: speed) }
         )
     }
 
@@ -139,7 +150,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
             else {
                 return
             }
-            playback.play(samples, volume: 1) {}
+            playback.play(samples, volume: 1, rate: 1) {}
         }
     }
 
@@ -198,7 +209,8 @@ public final class KokoroVoiceProvider: VoiceProvider {
     /// The prepared samples when they are the ones asked for, else a fresh render. A
     /// failure is logged and comes back nil, which the caller finishes silently.
     private func samples(for text: String, voice: KokoroVoice, rate: Rate) async -> [Float]? {
-        let key = CacheKey(text: text, voice: voice.kokoroID, rate: rate)
+        let speed = Self.split(rate).engine
+        let key = CacheKey(text: text, voice: voice.kokoroID, speed: speed)
         if let prepared, prepared.key == key {
             self.prepared = nil
             return await prepared.task.value
@@ -208,7 +220,7 @@ public final class KokoroVoiceProvider: VoiceProvider {
         prepared?.task.cancel()
         prepared = nil
         do {
-            return try await engine.synthesize(text, voice: voice.kokoroID, speed: rate.factor)
+            return try await engine.synthesize(text, voice: voice.kokoroID, speed: speed)
         } catch KokoroEngineError.cancelled {
             return nil
         } catch {
