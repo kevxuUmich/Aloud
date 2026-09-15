@@ -675,6 +675,28 @@ import Vault
         }
     }
 
+    /// Switching between two system voices mid-sentence keeps the contract the whole app
+    /// has: the pick takes at the next sentence, and the one being read is not rewound
+    /// and said again. Only the Kokoro engine drops a sentence without finishing it.
+    @Test func anApplePickMidSentenceDoesNotRestartIt() async throws {
+        try await withModel { model, _ in
+            let apple = try #require(model.provider as? FakeVoiceProvider)
+            let second = Voice(id: "fake2", name: "Fake Two", language: "en-US", quality: .standard)
+            apple.voices = [try #require(apple.voices.first), second]
+            let source = "One two three. Four five six."
+            model.player.load(Script(source: source, sentences: SentenceSplitter.split(source)), at: 0)
+            model.player.play()
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+
+            model.pickVoice(second)
+
+            #expect(apple.spoken.map(\.text) == ["One two three."])
+            #expect(apple.stops == 0)
+            #expect(model.player.isPlaying)
+            #expect(model.player.voice?.id == "fake2")
+        }
+    }
+
     /// A model with a Kokoro provider over a store the test controls: nothing installed
     /// unless the case installs it. The Apple provider and the engine come back too, so
     /// a case can make the models fail to load and see what the system voice was then

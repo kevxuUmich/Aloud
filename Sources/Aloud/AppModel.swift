@@ -237,14 +237,25 @@ final class AppModel {
         // An explicit pick outranks the row that started a download still running, so
         // the install does not overrule the reader when it completes.
         pendingKokoroPick = nil
+        // Read before the reassignment below, because it is the voice being left that
+        // says whether a sentence is about to be dropped.
+        let wasSpeakingKokoro = isSpeakingKokoro
         player.voice = v
         Defaults.voiceID = v.id
         if KokoroCatalogue.isKokoro(v.id) {
             kokoro?.warm(v)
         } else {
             kokoro?.unload()
-            respeakCurrentSentence()
+            if wasSpeakingKokoro { respeakCurrentSentence() }
         }
+    }
+
+    /// Whether the sentence in the air is the Kokoro engine's. Only that engine drops a
+    /// sentence without finishing it, so only that engine's sentence is ever spoken
+    /// again; an Apple voice keeps the contract the whole app has, that a pick takes at
+    /// the next sentence.
+    private var isSpeakingKokoro: Bool {
+        player.isPlaying && player.voice.map { KokoroCatalogue.isKokoro($0.id) } == true
     }
 
     /// A Kokoro sentence that was in the air has been dropped rather than finished, so
@@ -271,10 +282,12 @@ final class AppModel {
     /// Removes the model. A Kokoro voice that was picked is gone with it, and the
     /// player falls back through its own check.
     func removeKokoro() {
+        // Read before the unload and the fallback, for the reason `pickVoice` gives.
+        let wasSpeakingKokoro = isSpeakingKokoro
         kokoro?.unload()
         kokoroStore?.remove()
         player.revalidateVoice()
-        respeakCurrentSentence()
+        if wasSpeakingKokoro { respeakCurrentSentence() }
     }
 
     /// The one writer of `player.rate` after init, for the same reason.
